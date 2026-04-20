@@ -1,4 +1,3 @@
-import { dirname, join } from "node:path";
 import {
   GralkorHttpClient,
   createServerManager,
@@ -22,7 +21,6 @@ import { resolveSessionId } from "./session-map.js";
 export interface RegisterContext {
   api: MemoryPluginApi;
   config: GralkorPluginConfig;
-  pluginDir: string;
   version: string;
 }
 
@@ -160,19 +158,18 @@ export function registerHooks(
 export function registerServerService(
   api: MemoryPluginApi,
   config: GralkorPluginConfig,
-  pluginDir: string,
   version: string,
 ): ServerManager {
   if (!config.dataDir) {
     throw new Error(
-      "[gralkor] dataDir is required — set plugins.entries.gralkor.config.dataDir",
+      "[gralkor] dataDir is required — set plugins.entries.openclaw-gralkor.config.dataDir",
     );
   }
 
-  const serverDir = join(pluginDir, "server");
+  // serverDir defaults to the bundled Python server shipped inside
+  // @susu-eng/gralkor-ts — no override needed here.
   const manager = createServerManager({
     dataDir: config.dataDir,
-    serverDir,
     port: 4000,
     version,
     secretEnv: buildSecretEnv(config),
@@ -192,6 +189,17 @@ export function registerServerService(
     stop: () => manager.stop(),
   });
 
+  // Self-start. OpenClaw does not call service.start() for memory-kind plugins,
+  // so relying on the registerService hook alone leaves uvicorn unspawned and
+  // every hook fails with "fetch failed". Fire-and-forget here; errors surface
+  // via the server-manager's own logs.
+  void manager.start().catch((err) => {
+    console.error(
+      "[gralkor] boot: self-start failed:",
+      err instanceof Error ? err.message : err,
+    );
+  });
+
   return manager;
 }
 
@@ -202,9 +210,4 @@ function buildSecretEnv(config: GralkorPluginConfig): Record<string, string> {
   if (config.anthropicApiKey) env.ANTHROPIC_API_KEY = config.anthropicApiKey.trim();
   if (config.groqApiKey) env.GROQ_API_KEY = config.groqApiKey.trim();
   return env;
-}
-
-/** @internal */
-export function _dirnameFromUrl(url: string): string {
-  return dirname(new URL(url).pathname);
 }

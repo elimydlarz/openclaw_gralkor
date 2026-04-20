@@ -41,8 +41,8 @@ export function _resetForTesting(): void {
   serverManagerStarted = false;
 }
 
-export const id = "gralkor";
-export const name = "Gralkor Memory";
+export const id = "openclaw-gralkor";
+export const name = "Gralkor Memory (OpenClaw)";
 export const description =
   "Persistent, temporally-aware memory via Graphiti knowledge graphs and FalkorDB";
 export const kind = "memory" as const;
@@ -167,7 +167,7 @@ export function register(api: MemoryPluginApi): void {
 
     if (!serverManagerStarted) {
       serverManagerStarted = true;
-      registerServerService(api, config, pluginDir, version);
+      registerServerService(api, config, version);
     }
   } catch (err) {
     console.error(

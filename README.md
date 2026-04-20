@@ -1,6 +1,6 @@
 # @susu-eng/openclaw-gralkor
 
-OpenClaw memory plugin powered by [Gralkor](https://github.com/elimydlarz/gralkor) — a temporally-aware knowledge-graph memory service (Graphiti + FalkorDB). This package is the OpenClaw harness that supervises the Gralkor Python server, wires its HTTP API into OpenClaw hooks, and exposes `memory_search` and `memory_add` as tools.
+OpenClaw memory plugin powered by [Gralkor](https://github.com/elimydlarz/gralkor) — a temporally-aware knowledge-graph memory service (Graphiti + FalkorDB). This package is the OpenClaw harness: it supervises the Gralkor Python server (bundled inside its [`@susu-eng/gralkor-ts`](https://www.npmjs.com/package/@susu-eng/gralkor-ts) dependency), wires the HTTP API into OpenClaw hooks, and exposes `memory_search` and `memory_add` as tools.
 
 For non-OpenClaw uses see [`@susu-eng/gralkor-ts`](https://www.npmjs.com/package/@susu-eng/gralkor-ts) (the underlying TypeScript adapter this plugin builds on) or the [Gralkor monorepo](https://github.com/elimydlarz/gralkor).
 
@@ -10,18 +10,18 @@ For non-OpenClaw uses see [`@susu-eng/gralkor-ts`](https://www.npmjs.com/package
 openclaw plugins install @susu-eng/openclaw-gralkor --dangerously-force-unsafe-install
 ```
 
-(The install-time security scanner flags Gralkor as critical because of the embedded Python server. Inspect the source if you'd like to verify there's nothing weird going on.)
+(The install-time security scanner flags Gralkor as critical because the Python server that this plugin spawns lives inside `@susu-eng/gralkor-ts`. Inspect either package's source if you'd like to verify there's nothing weird going on.)
 
 Then configure before enabling:
 
 ```bash
-openclaw config set plugins.entries.gralkor.config.dataDir /path/to/gralkor-data
-openclaw config set plugins.entries.gralkor.config.googleApiKey 'your-key-here'   # or OPENAI/ANTHROPIC/GROQ
+openclaw config set plugins.entries.openclaw-gralkor.config.dataDir /path/to/gralkor-data
+openclaw config set plugins.entries.openclaw-gralkor.config.googleApiKey 'your-key-here'   # or OPENAI/ANTHROPIC/GROQ
 
-openclaw config set --json plugins.allow '["gralkor"]'
-openclaw config set plugins.entries.gralkor.enabled true
-openclaw config set plugins.slots.memory gralkor
-openclaw config set --json tools.alsoAllow '["gralkor"]'
+openclaw config set --json plugins.allow '["openclaw-gralkor"]'
+openclaw config set plugins.entries.openclaw-gralkor.enabled true
+openclaw config set plugins.slots.memory openclaw-gralkor
+openclaw config set --json tools.alsoAllow '["openclaw-gralkor"]'
 ```
 
 Restart OpenClaw. First boot takes 1–2 min while `uv sync` resolves Graphiti + falkordblite; subsequent starts reuse the venv.
@@ -47,7 +47,7 @@ Compared to previous versions of this plugin: the client-side debouncer, flush r
 
 ## Configuration
 
-Set under `plugins.entries.gralkor.config` in `~/.openclaw/openclaw.json`. See `openclaw.plugin.json` for the full schema; the useful knobs are:
+Set under `plugins.entries.openclaw-gralkor.config` in `~/.openclaw/openclaw.json`. See `openclaw.plugin.json` for the full schema; the useful knobs are:
 
 - **`dataDir`** *(required)* — writable directory for the Python venv + FalkorDB database.
 - **`autoCapture.enabled`** *(default: true)* — post `/capture` at the end of every agent run.

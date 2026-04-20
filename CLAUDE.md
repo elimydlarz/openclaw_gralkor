@@ -184,9 +184,11 @@ native-indexer
 ```
 plugin-lifecycle
   when the plugin loads
-    then the Python server manager is started via gralkor-ts (spawns uvicorn on port 4000, polls /health)
+    then the Python server manager is started via gralkor-ts (spawns uvicorn on port 4000, polls /health) — gralkor-ts owns the bundled server runtime; this plugin does not ship its own server files
+    then register() fires manager.start() fire-and-forget immediately (self-start) — OpenClaw does not call api.registerService().start for memory-kind plugins, so relying on that alone leaves uvicorn unspawned and every hook fails with "fetch failed"
+    then api.registerService({id: "gralkor-server", start, stop}) is also registered so OpenClaw has a handle for graceful shutdown (stop on SIGTERM)
     then a module-level Map<sessionKey, groupId> is initialised
-    then the three hooks (before_prompt_build, agent_end, session_end) and two tools (memory_search, memory_add) are registered with OpenClaw
+    then the three hooks (before_prompt_build, agent_end, session_end) and four tools (memory_search, memory_add, memory_build_indices, memory_build_communities) are registered with OpenClaw
   when the plugin is reloaded in-process (OpenClaw reloads plugins multiple times per event)
     then the module-level Map and the server manager singleton persist across reloads (no duplicate spawn)
   when the process receives SIGTERM
@@ -214,4 +216,4 @@ pnpm run test:unit
 - `pnpm run publish:clawhub -- <level>` — publishes to clawhub. Uses `.clawhubignore` to gate what ships.
 - `pnpm run publish:all -- <level>` — both in sequence.
 
-The Python server lives in `server/` and ships inside the published npm tarball so `openclaw plugins install @susu-eng/openclaw-gralkor` gets a working runtime without a separate download.
+The Python server is not shipped from this repo — it ships inside `@susu-eng/gralkor-ts`, which this plugin depends on. `gralkor-ts` bundles a copy of the monorepo's `server/` at its own build time, and `createServerManager()` resolves `bundledServerDir()` to that copy. `openclaw plugins install @susu-eng/openclaw-gralkor` therefore pulls the server transitively via the gralkor-ts dependency.

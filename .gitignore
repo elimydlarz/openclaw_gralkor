@@ -1,12 +1,10 @@
 node_modules
 dist
+server
 *.tgz
 .env
 .env.*
 !.env.example
-server/wheels
-server/.venv
-server/tests/distillation_results
 coverage
 __pycache__
 *.pyc
