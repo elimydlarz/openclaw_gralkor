@@ -75,7 +75,7 @@ export function registerTools(api: MemoryPluginApi, client: GralkorClient): void
       {
         name: "memory_build_indices",
         description:
-          "Admin: rebuild graph search indices. Idempotent. Run after schema changes or when search results look stale.",
+          "ADMIN — DO NOT CALL unless the user has explicitly asked you to rebuild Gralkor's graph search indices. This is an operator-maintenance action; calling it unprompted wastes time without improving anything the user will notice. Idempotent rebuild of the graph search indices.",
         parameters: { type: "object", properties: {} },
         execute: async () => {
           const r = await runMemoryBuildIndices(client);
@@ -86,7 +86,7 @@ export function registerTools(api: MemoryPluginApi, client: GralkorClient): void
       {
         name: "memory_build_communities",
         description:
-          "Admin: detect and build entity communities for this agent's memory partition. Improves search quality by clustering related entities.",
+          "ADMIN — DO NOT CALL unless the user has explicitly asked you to build Gralkor communities. This is an expensive operator-maintenance action; calling it unprompted wastes time. Runs Graphiti community detection over this agent's memory partition.",
         parameters: { type: "object", properties: {} },
         execute: async () => {
           const r = await runMemoryBuildCommunities(client, { sessionKey });
