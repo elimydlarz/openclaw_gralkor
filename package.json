@@ -1,7 +1,7 @@
 {
   "name": "@susu-eng/openclaw-gralkor",
   "displayName": "Gralkor Memory (OpenClaw)",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "OpenClaw memory plugin powered by Gralkor (Graphiti + FalkorDB). Installs a plugin that supervises the Gralkor Python server and wires its HTTP API into OpenClaw hooks and tools.",
   "type": "module",
   "main": "./dist/index.js",
