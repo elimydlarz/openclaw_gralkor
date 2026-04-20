@@ -1,0 +1,80 @@
+{
+  "name": "@susu-eng/openclaw-gralkor",
+  "displayName": "Gralkor Memory (OpenClaw)",
+  "version": "1.0.0",
+  "description": "OpenClaw memory plugin powered by Gralkor (Graphiti + FalkorDB). Installs a plugin that supervises the Gralkor Python server and wires its HTTP API into OpenClaw hooks and tools.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.4.2"
+    },
+    "build": {
+      "openclawVersion": "2026.4.2"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm run typecheck && pnpm run test:unit",
+    "test:unit": "vitest run",
+    "test:watch": "vitest",
+    "pack": "bash scripts/pack.sh",
+    "publish:npm": "bash scripts/publish-npm.sh",
+    "publish:clawhub": "bash scripts/publish-clawhub.sh",
+    "publish:all": "bash scripts/publish-all.sh"
+  },
+  "files": [
+    "dist",
+    "server/main.py",
+    "server/pyproject.toml",
+    "server/uv.lock",
+    "server/requirements.txt",
+    "server/wheels",
+    "openclaw.plugin.json",
+    "config.yaml",
+    ".env.example"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/elimydlarz/openclaw_gralkor.git"
+  },
+  "homepage": "https://github.com/elimydlarz/openclaw_gralkor#readme",
+  "bugs": {
+    "url": "https://github.com/elimydlarz/openclaw_gralkor/issues"
+  },
+  "author": "susu-eng",
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "gralkor",
+    "graphiti",
+    "falkordb",
+    "knowledge-graph",
+    "memory",
+    "ai-agent"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@susu-eng/gralkor-ts": "^0.2.0",
+    "openclaw": "2026.4.2"
+  },
+  "peerDependencies": {
+    "openclaw": "2026.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "memfs": "^4.57.1",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.2"
+  },
+  "license": "MIT"
+}

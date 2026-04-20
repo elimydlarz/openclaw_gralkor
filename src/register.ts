@@ -1,0 +1,210 @@
+import { dirname, join } from "node:path";
+import {
+  GralkorHttpClient,
+  createServerManager,
+  waitForHealth,
+  GRALKOR_URL,
+  type GralkorClient,
+  type ServerManager,
+} from "@susu-eng/gralkor-ts";
+import type { GralkorPluginConfig } from "./config.js";
+import type { MemoryPluginApi } from "./types.js";
+import { runMemorySearch } from "./tools/memory-search.js";
+import { runMemoryAdd } from "./tools/memory-add.js";
+import { runMemoryBuildIndices } from "./tools/memory-build-indices.js";
+import { runMemoryBuildCommunities } from "./tools/memory-build-communities.js";
+import { runBeforePromptBuild } from "./hooks/before-prompt-build.js";
+import { runAgentEnd } from "./hooks/agent-end.js";
+import { runSessionEnd } from "./hooks/session-end.js";
+import { runNativeIndexer } from "./native-indexer.js";
+import { resolveSessionId } from "./session-map.js";
+
+export interface RegisterContext {
+  api: MemoryPluginApi;
+  config: GralkorPluginConfig;
+  pluginDir: string;
+  version: string;
+}
+
+export function registerTools(api: MemoryPluginApi, client: GralkorClient): void {
+  api.registerTool((ctx) => {
+    const sessionKey = resolveSessionId(ctx?.sessionKey, ctx?.agentId);
+    return [
+      {
+        name: "memory_search",
+        description:
+          "Search long-term memory for relevant context. Use specific, focused queries.",
+        parameters: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "The search query" },
+          },
+          required: ["query"],
+        },
+        execute: async (args: { query: string }) => {
+          const r = await runMemorySearch(client, {
+            query: args.query,
+            sessionKey,
+          });
+          if ("error" in r) throw new Error(JSON.stringify(r.error));
+          return r.ok;
+        },
+      },
+      {
+        name: "memory_add",
+        description:
+          "Store a thought, insight, reflection, or decision in long-term memory.",
+        parameters: {
+          type: "object",
+          properties: {
+            content: { type: "string" },
+            source_description: { type: "string" },
+          },
+          required: ["content"],
+        },
+        execute: async (args: { content: string; source_description?: string }) => {
+          const r = await runMemoryAdd(client, {
+            sessionKey,
+            content: args.content,
+            sourceDescription: args.source_description,
+          });
+          if ("error" in r) throw new Error(JSON.stringify(r.error));
+          return "Queued for storage.";
+        },
+      },
+      {
+        name: "memory_build_indices",
+        description:
+          "Admin: rebuild graph search indices. Idempotent. Run after schema changes or when search results look stale.",
+        parameters: { type: "object", properties: {} },
+        execute: async () => {
+          const r = await runMemoryBuildIndices(client);
+          if ("error" in r) throw new Error(JSON.stringify(r.error));
+          return `Indices rebuilt (${r.ok.status}).`;
+        },
+      },
+      {
+        name: "memory_build_communities",
+        description:
+          "Admin: detect and build entity communities for this agent's memory partition. Improves search quality by clustering related entities.",
+        parameters: { type: "object", properties: {} },
+        execute: async () => {
+          const r = await runMemoryBuildCommunities(client, { sessionKey });
+          if ("error" in r) throw new Error(JSON.stringify(r.error));
+          return `Built ${r.ok.communities} communities across ${r.ok.edges} edges.`;
+        },
+      },
+    ];
+  });
+}
+
+export function registerHooks(
+  api: MemoryPluginApi,
+  client: GralkorClient,
+  config: GralkorPluginConfig,
+): void {
+  api.on("before_prompt_build", async (event: {
+    sessionKey?: string;
+    agentId?: string;
+    messages?: { role: string; content: unknown }[];
+    workspaceDir?: string;
+  }) => {
+    const sessionKey = resolveSessionId(event.sessionKey, event.agentId);
+    const agentId = event.agentId ?? sessionKey;
+
+    // Fire-and-forget native indexer — doesn't block the prompt build.
+    const workspaceDir = event.workspaceDir ?? config.workspaceDir;
+    if (workspaceDir) {
+      const groupId = agentId.replace(/-/g, "_");
+      void runNativeIndexer(client, workspaceDir, groupId).catch((err) => {
+        console.error("[gralkor] native-index error:", err);
+      });
+    }
+
+    const result = await runBeforePromptBuild(client, {
+      sessionKey,
+      agentId,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      messages: (event.messages ?? []) as any,
+      autoRecall: config.autoRecall.enabled,
+    });
+    if ("error" in result) throw new Error(JSON.stringify(result.error));
+    return result.ok;
+  });
+
+  api.on("agent_end", async (event: {
+    sessionKey?: string;
+    agentId?: string;
+    messages?: { role: string; content: unknown }[];
+  }) => {
+    const sessionKey = resolveSessionId(event.sessionKey, event.agentId);
+    const result = await runAgentEnd(client, {
+      sessionKey,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      messages: (event.messages ?? []) as any,
+      autoCapture: config.autoCapture.enabled,
+    });
+    if ("error" in result) throw new Error(JSON.stringify(result.error));
+  });
+
+  api.on("session_end", async (event: {
+    sessionKey?: string;
+    agentId?: string;
+  }) => {
+    const sessionKey = resolveSessionId(event.sessionKey, event.agentId);
+    const result = await runSessionEnd(client, { sessionKey });
+    if ("error" in result) throw new Error(JSON.stringify(result.error));
+  });
+}
+
+export function registerServerService(
+  api: MemoryPluginApi,
+  config: GralkorPluginConfig,
+  pluginDir: string,
+  version: string,
+): ServerManager {
+  if (!config.dataDir) {
+    throw new Error(
+      "[gralkor] dataDir is required — set plugins.entries.gralkor.config.dataDir",
+    );
+  }
+
+  const serverDir = join(pluginDir, "server");
+  const manager = createServerManager({
+    dataDir: config.dataDir,
+    serverDir,
+    port: 4000,
+    version,
+    secretEnv: buildSecretEnv(config),
+    llmConfig: config.llm,
+    embedderConfig: config.embedder,
+    ontologyConfig: config.ontology,
+    test: config.test,
+  });
+
+  api.registerService({
+    id: "gralkor-server",
+    start: async () => {
+      await manager.start();
+      const client = new GralkorHttpClient({ baseUrl: GRALKOR_URL });
+      await waitForHealth(client, { timeoutMs: 120_000, backoffMs: 500 });
+    },
+    stop: () => manager.stop(),
+  });
+
+  return manager;
+}
+
+function buildSecretEnv(config: GralkorPluginConfig): Record<string, string> {
+  const env: Record<string, string> = {};
+  if (config.googleApiKey) env.GOOGLE_API_KEY = config.googleApiKey.trim();
+  if (config.openaiApiKey) env.OPENAI_API_KEY = config.openaiApiKey.trim();
+  if (config.anthropicApiKey) env.ANTHROPIC_API_KEY = config.anthropicApiKey.trim();
+  if (config.groqApiKey) env.GROQ_API_KEY = config.groqApiKey.trim();
+  return env;
+}
+
+/** @internal */
+export function _dirnameFromUrl(url: string): string {
+  return dirname(new URL(url).pathname);
+}
