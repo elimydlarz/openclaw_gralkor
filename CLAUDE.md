@@ -178,8 +178,6 @@ memory_build_indices tool
 
 ```
 memory_build_communities tool
-  when the tool-registration ctx has no sessionKey (or it is blank)
-    then the tool's execute throws (Gralkor requires a non-blank session_id)
   when the tool is invoked with a registered sessionKey
     then GralkorClient.buildCommunities is called with the groupId for the current session
     when the client returns { ok: { communities, edges } }
