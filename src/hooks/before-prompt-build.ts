@@ -1,5 +1,5 @@
-import type { GralkorClient, Result } from "@susu-eng/gralkor-ts";
-import type { MessageEntry } from "../ctx-to-turn.js";
+import { sanitizeGroupId, type GralkorClient, type Result } from "@susu-eng/gralkor-ts";
+import { textFromContent, type MessageEntry } from "../ctx-to-turn.js";
 import { setSessionGroup } from "../session-map.js";
 
 export interface BeforePromptBuildCtx {
