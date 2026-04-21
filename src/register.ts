@@ -204,12 +204,3 @@ export function registerServerService(
 
   return manager;
 }
-
-function buildSecretEnv(config: GralkorPluginConfig): Record<string, string> {
-  const env: Record<string, string> = {};
-  if (config.googleApiKey) env.GOOGLE_API_KEY = config.googleApiKey.trim();
-  if (config.openaiApiKey) env.OPENAI_API_KEY = config.openaiApiKey.trim();
-  if (config.anthropicApiKey) env.ANTHROPIC_API_KEY = config.anthropicApiKey.trim();
-  if (config.groqApiKey) env.GROQ_API_KEY = config.groqApiKey.trim();
-  return env;
-}
