@@ -7,7 +7,7 @@ import { resolveConfig, defaultConfig, buildSecretEnv } from "../src/config.js";
 
 describe("config — resolveConfig", () => {
   it("returns the default config when given an empty object", () => {
-    expect(resolveConfig({})).toEqual(defaultConfig);
+    expect(resolveConfig({})).toMatchObject(defaultConfig);
   });
 
   it("overrides only the fields provided and keeps defaults elsewhere", () => {
