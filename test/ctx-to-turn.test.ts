@@ -104,6 +104,32 @@ describe("ctxToTurn", () => {
     expect(turn!.user_query).toBe("Check again");
   });
 
+  it("strips both metadata blocks when they appear in reverse order (Sender then Conversation info)", () => {
+    const messages: MessageEntry[] = [
+      {
+        role: "user",
+        content:
+          'Sender (untrusted metadata):\n```json\n{"name":"Eli"}\n```\nConversation info (untrusted metadata):\n```json\n{"message_id":"3991"}\n```\nWhat\'s up?',
+      },
+      { role: "assistant", content: [{ type: "text", text: "hi" }] },
+    ];
+
+    const turn = ctxToTurn(messages);
+    expect(turn!.user_query).toBe("What's up?");
+  });
+
+  it("does not strip metadata-shaped blocks that appear mid-content after real user text", () => {
+    const content =
+      'Here\'s a real question. Can you parse this?\nConversation info (untrusted metadata):\n```json\n{"message_id":"3991"}\n```\nend.';
+    const messages: MessageEntry[] = [
+      { role: "user", content },
+      { role: "assistant", content: [{ type: "text", text: "sure" }] },
+    ];
+
+    const turn = ctxToTurn(messages);
+    expect(turn!.user_query).toBe(content);
+  });
+
   it("does not modify assistant_answer even when it contains metadata-looking content", () => {
     const untouched =
       'Conversation info (untrusted metadata):\n```json\n{}\n```\nquoted in response';
