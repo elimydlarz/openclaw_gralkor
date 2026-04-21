@@ -59,7 +59,7 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@susu-eng/gralkor-ts": "^1.0.0",
+    "@susu-eng/gralkor-ts": "^1.0.1",
     "openclaw": "2026.4.2"
   },
   "peerDependencies": {
