@@ -39,10 +39,7 @@ export async function runBeforePromptBuild(
   const query = trailingUserText(ctx.messages);
   if (query === null) return { ok: {} };
 
-  // getSessionGroup would return the just-set value; use it for clarity.
-  const groupId = ctx.agentId.replace(/-/g, "_");
-
-  const recalled = await client.recall(groupId, ctx.sessionKey, query);
+  const recalled = await client.recall(sanitizeGroupId(ctx.agentId), ctx.sessionKey, query);
   if ("error" in recalled) return { error: recalled.error };
 
   if (recalled.ok === null) return { ok: {} };
@@ -52,19 +49,9 @@ export async function runBeforePromptBuild(
 function trailingUserText(messages: MessageEntry[]): string | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     if (messages[i].role === "user") {
-      const c = messages[i].content;
-      const text = typeof c === "string" ? c : textFromBlocks(c);
+      const text = textFromContent(messages[i].content);
       return text.length > 0 ? text : null;
     }
   }
   return null;
-}
-
-function textFromBlocks(
-  blocks: { type: string; text?: string }[],
-): string {
-  return blocks
-    .filter((b) => b.type === "text" || b.type === "output_text")
-    .map((b) => b.text ?? "")
-    .join("");
 }
