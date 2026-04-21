@@ -35,7 +35,6 @@ export interface GralkorPluginConfig {
 
 export const defaultConfig: GralkorPluginConfig = {
   autoCapture: { enabled: true },
-  idleTimeoutMs: 5 * 60 * 1000,
   autoRecall: { enabled: true, maxResults: 10 },
   search: { maxResults: 20, maxEntityResults: 10 },
   llm: { provider: DEFAULT_LLM_PROVIDER, model: DEFAULT_LLM_MODEL },
