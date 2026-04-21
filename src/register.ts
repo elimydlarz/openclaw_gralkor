@@ -1,6 +1,7 @@
 import {
   GralkorHttpClient,
   createServerManager,
+  sanitizeGroupId,
   waitForHealth,
   GRALKOR_URL,
   type GralkorClient,
