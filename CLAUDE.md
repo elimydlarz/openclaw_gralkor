@@ -135,8 +135,6 @@ session-map
 
 ```
 memory_search tool
-  when the tool-registration ctx has no sessionKey (or it is blank)
-    then the tool's execute throws (Gralkor requires a non-blank session_id)
   when the tool is invoked with a query and a registered sessionKey
     then GralkorClient.memorySearch(groupId, sessionId, query) is called
     when the client returns { ok: text }
@@ -152,8 +150,6 @@ memory_search tool
 
 ```
 memory_add tool
-  when the tool-registration ctx has no sessionKey (or it is blank)
-    then the tool's execute throws (Gralkor requires a non-blank session_id)
   when the tool is invoked with content and a registered sessionKey
     then GralkorClient.memoryAdd(groupId, content, sourceDescription) is called
     when the client returns { ok: true }
@@ -162,6 +158,8 @@ memory_add tool
       then the tool surfaces the error
   when sourceDescription is omitted
     then null is passed to the client (server defaults to "manual")
+  when the sessionKey is present but not registered in the session map
+    then the tool returns "session_not_registered"
 ```
 
 ### memory_build_indices tool
