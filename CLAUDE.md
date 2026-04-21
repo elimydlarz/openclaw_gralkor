@@ -211,16 +211,68 @@ native-indexer
     then the indexer logs the error and continues with the remaining files
 ```
 
+### registration-contract
+
+```
+registration-contract
+  each hook and tool invokes requireSessionKey(event.sessionKey) at its boundary before any work
+    when before_prompt_build fires without sessionKey (undefined or blank)
+      then the hook throws synchronously before recall, native-index, or session registration
+    when agent_end fires without sessionKey
+      then the hook throws synchronously before capture
+    when session_end fires without sessionKey
+      then the hook throws synchronously before endSession
+    when memory_search.execute runs and the tool-registration ctx lacks a sessionKey
+      then execute throws synchronously before any client call
+    when memory_add.execute runs and the tool-registration ctx lacks a sessionKey
+      then execute throws synchronously before any client call
+    when memory_build_communities.execute runs and the tool-registration ctx lacks a sessionKey
+      then execute throws synchronously before any client call
+  memory_build_indices is the one exception — it is a whole-graph admin operation
+    when memory_build_indices.execute runs with a tool-registration ctx that has no sessionKey
+      then execute proceeds without requireSessionKey (no per-session scope)
+```
+
+### config
+
+```
+config
+  resolveConfig
+    when resolveConfig is called with an empty object
+      then the result equals defaultConfig (autoCapture/autoRecall/search/llm defaults applied)
+    when resolveConfig is called with partial overrides
+      then provided fields override defaults and unspecified fields keep their defaults
+    when resolveConfig is called with api-key fields
+      then the keys are passed through unchanged (trimming happens later in buildSecretEnv)
+  buildSecretEnv
+    when buildSecretEnv is called with no api keys set
+      then it returns an empty object
+    when buildSecretEnv is called with each provider key set
+      then it maps googleApiKey → GOOGLE_API_KEY, openaiApiKey → OPENAI_API_KEY, anthropicApiKey → ANTHROPIC_API_KEY, groqApiKey → GROQ_API_KEY
+    when an api-key value has surrounding whitespace
+      then the whitespace is trimmed
+    when only some api keys are set
+      then only those keys appear in the env dict (no empty values)
+```
+
 ### plugin lifecycle
 
 ```
 plugin-lifecycle
+  plugin manifest exports
+    when src/index.ts is imported
+      then id is "openclaw-gralkor"
+      then kind is "memory"
+      then tools lists the four tool names (memory_search, memory_add, memory_build_indices, memory_build_communities)
+      then configSchema declares the expected top-level properties (dataDir, workspaceDir, autoCapture, autoRecall, search, test, and the four apiKey fields)
   when the plugin loads
     then the Python server manager is started via gralkor-ts (spawns uvicorn on port 4000, polls /health) — gralkor-ts owns the bundled server runtime; this plugin does not ship its own server files
     then register() fires manager.start() fire-and-forget immediately (self-start) — OpenClaw does not call api.registerService().start for memory-kind plugins, so relying on that alone leaves uvicorn unspawned and every hook fails with "fetch failed"
     then api.registerService({id: "gralkor-server", start, stop}) is also registered so OpenClaw has a handle for graceful shutdown (stop on SIGTERM)
     then a module-level Map<sessionKey, groupId> is initialised
     then the three hooks (before_prompt_build, agent_end, session_end) and four tools (memory_search, memory_add, memory_build_indices, memory_build_communities) are registered with OpenClaw
+  when register() is called with missing dataDir
+    then registerServerService throws synchronously before any service is registered (fail-fast on config misuse)
   when the plugin is reloaded in-process (OpenClaw reloads plugins multiple times per event)
     then the module-level Map and the server manager singleton persist across reloads (no duplicate spawn)
   when the process receives SIGTERM
