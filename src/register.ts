@@ -7,7 +7,7 @@ import {
   type GralkorClient,
   type ServerManager,
 } from "@susu-eng/gralkor-ts";
-import type { GralkorPluginConfig } from "./config.js";
+import { buildSecretEnv, type GralkorPluginConfig } from "./config.js";
 import type { MemoryPluginApi } from "./types.js";
 import { runMemorySearch } from "./tools/memory-search.js";
 import { runMemoryAdd } from "./tools/memory-add.js";
