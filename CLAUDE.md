@@ -101,6 +101,10 @@ ctxToTurn
     then the block is stripped from user_query
   when both metadata blocks precede the user text
     then both are stripped in sequence and user_query is the clean remainder
+  when both blocks precede the user text in reverse order (Sender then Conversation info)
+    then both are stripped and user_query is the clean remainder (order-insensitive)
+  when a metadata-shaped block appears mid-content after real user text
+    then nothing is stripped (only leading blocks are harness scaffolding)
   when the user content does not start with a metadata block
     then user_query is returned unchanged
   when the assistant content contains metadata-looking text
