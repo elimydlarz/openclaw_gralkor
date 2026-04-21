@@ -25,7 +25,11 @@ export interface RegisterContext {
   version: string;
 }
 
-export function registerTools(api: MemoryPluginApi, client: GralkorClient): void {
+export function registerTools(
+  api: MemoryPluginApi,
+  client: GralkorClient,
+  config: GralkorPluginConfig,
+): void {
   api.registerTool((ctx) => {
     const rawSessionKey = ctx?.sessionKey;
     return [
@@ -44,6 +48,8 @@ export function registerTools(api: MemoryPluginApi, client: GralkorClient): void
           const r = await runMemorySearch(client, {
             query: args.query,
             sessionKey: requireSessionKey(rawSessionKey),
+            maxResults: config.search.maxResults,
+            maxEntityResults: config.search.maxEntityResults,
           });
           if ("error" in r) throw new Error(JSON.stringify(r.error));
           return r.ok;
@@ -127,6 +133,7 @@ export function registerHooks(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       messages: (event.messages ?? []) as any,
       autoRecall: config.autoRecall.enabled,
+      maxResults: config.autoRecall.maxResults,
     });
     if ("error" in result) throw new Error(JSON.stringify(result.error));
     return result.ok;

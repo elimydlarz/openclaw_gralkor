@@ -4,6 +4,10 @@ import { getSessionGroup } from "../session-map.js";
 export interface MemorySearchArgs {
   query: string;
   sessionKey: string;
+  /** Max facts to interpret. Forwarded as max_results. Omit to use the server default. */
+  maxResults?: number;
+  /** Max entity summaries to interpret. Forwarded as max_entity_results. Omit to use the server default. */
+  maxEntityResults?: number;
 }
 
 /**
@@ -23,5 +27,11 @@ export async function runMemorySearch(
   const groupId = getSessionGroup(args.sessionKey);
   if (groupId === null) return { error: "session_not_registered" };
 
-  return client.memorySearch(groupId, args.sessionKey, args.query);
+  return client.memorySearch(
+    groupId,
+    args.sessionKey,
+    args.query,
+    args.maxResults,
+    args.maxEntityResults,
+  );
 }

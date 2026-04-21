@@ -9,7 +9,6 @@ import {
 import {
   resolveConfig,
   defaultConfig,
-  resolveProviders,
   type GralkorPluginConfig,
 } from "./config.js";
 import type { MemoryPluginApi } from "./types.js";
@@ -137,15 +136,19 @@ export function register(api: MemoryPluginApi): void {
           `[gralkor] raw pluginConfig: ${JSON.stringify(api.pluginConfig)}`,
         );
       }
-      const { llmProvider, llmModel, embedderProvider, embedderModel } =
-        resolveProviders(config);
+      const llmSummary = config.llm
+        ? `${config.llm.provider}/${config.llm.model}`
+        : "server-default";
+      const embedderSummary = config.embedder
+        ? `${config.embedder.provider}/${config.embedder.model}`
+        : "server-default";
       const ontologySummary = config.ontology
         ? `${Object.keys(config.ontology.entities ?? {}).length} entities, ${Object.keys(config.ontology.edges ?? {}).length} edges`
         : "none";
       console.log(
         `[gralkor] config:` +
-          ` llm=${llmProvider}/${llmModel}` +
-          ` embedder=${embedderProvider}/${embedderModel}` +
+          ` llm=${llmSummary}` +
+          ` embedder=${embedderSummary}` +
           ` ontology=${ontologySummary}` +
           ` autoCapture=${config.autoCapture.enabled}` +
           ` autoRecall=${config.autoRecall.enabled} maxResults=${config.autoRecall.maxResults}` +
@@ -156,7 +159,7 @@ export function register(api: MemoryPluginApi): void {
 
     const client = new GralkorHttpClient({ baseUrl: GRALKOR_URL });
 
-    registerTools(api, client);
+    registerTools(api, client, config);
     registerHooks(api, client, config);
 
     if (!serverManagerStarted) {

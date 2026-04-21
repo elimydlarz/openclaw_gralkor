@@ -5,7 +5,7 @@ import {
   getSessionGroup,
   resetSessionMap,
 } from "../../src/session-map.js";
-import type { MessageEntry } from "../../src/ctx-to-turn.js";
+import type { MessageEntry } from "../../src/ctx-to-messages.js";
 
 describe("before_prompt_build hook", () => {
   let client: GralkorInMemoryClient;
@@ -46,7 +46,23 @@ describe("before_prompt_build hook", () => {
       });
 
       expect(client.recalls).toEqual([
-        ["user_1", "sess-1", "what do you know about me?"],
+        ["user_1", "sess-1", "what do you know about me?", undefined],
+      ]);
+    });
+
+    it("forwards maxResults to the client when configured", async () => {
+      client.setResponse("recall", { ok: null });
+
+      await runBeforePromptBuild(client, {
+        sessionKey: "sess-1",
+        agentId: "user-1",
+        messages: userQ,
+        autoRecall: true,
+        maxResults: 5,
+      });
+
+      expect(client.recalls).toEqual([
+        ["user_1", "sess-1", "what do you know about me?", 5],
       ]);
     });
 

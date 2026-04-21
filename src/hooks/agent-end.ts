@@ -1,5 +1,5 @@
 import type { GralkorClient, Result } from "@susu-eng/gralkor-ts";
-import { ctxToTurn, type MessageEntry } from "../ctx-to-turn.js";
+import { ctxToMessages, type MessageEntry } from "../ctx-to-messages.js";
 import { getSessionGroup } from "../session-map.js";
 
 export interface AgentEndCtx {
@@ -50,13 +50,16 @@ export async function runAgentEnd(
 
   if (ctx.sessionKey === SLUG_GENERATOR_SESSION_KEY) return { ok: true };
 
-  const turn = ctxToTurn(ctx.messages);
-  if (turn === null) return { ok: true };
+  const messages = ctxToMessages(ctx.messages);
+  if (messages === null) return { ok: true };
 
-  if (turn.user_query.startsWith(SESSION_RESET_PROMPT_PREFIX)) return { ok: true };
+  const userMessage = messages.find((m) => m.role === "user");
+  if (userMessage && userMessage.content.startsWith(SESSION_RESET_PROMPT_PREFIX)) {
+    return { ok: true };
+  }
 
   const groupId = getSessionGroup(ctx.sessionKey);
   if (groupId === null) return { error: "session_not_registered" };
 
-  return client.capture(ctx.sessionKey, groupId, turn);
+  return client.capture(ctx.sessionKey, groupId, messages);
 }

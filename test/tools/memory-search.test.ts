@@ -21,7 +21,23 @@ describe("memory_search tool", () => {
     });
 
     expect(result).toEqual({ ok: "Facts:\n- tea" });
-    expect(client.searches).toEqual([["user_1", "sess-1", "preferences"]]);
+    expect(client.searches).toEqual([
+      ["user_1", "sess-1", "preferences", undefined, undefined],
+    ]);
+  });
+
+  it("forwards maxResults and maxEntityResults to the client when configured", async () => {
+    setSessionGroup("sess-1", "user-1");
+    client.setResponse("memorySearch", { ok: "ok" });
+
+    await runMemorySearch(client, {
+      query: "preferences",
+      sessionKey: "sess-1",
+      maxResults: 7,
+      maxEntityResults: 3,
+    });
+
+    expect(client.searches).toEqual([["user_1", "sess-1", "preferences", 7, 3]]);
   });
 
   it("surfaces client errors without falling back", async () => {

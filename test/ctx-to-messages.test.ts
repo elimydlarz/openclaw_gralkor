@@ -1,41 +1,41 @@
 import { describe, it, expect } from "vitest";
-import { ctxToTurn, type MessageEntry } from "../src/ctx-to-turn.js";
+import { ctxToMessages, type MessageEntry } from "../src/ctx-to-messages.js";
 
-describe("ctxToTurn", () => {
-  it("returns a single Turn built from the trailing user query + final assistant answer + intermediate events", () => {
+describe("ctxToMessages", () => {
+  it("emits a canonical [user, behaviour…, assistant] sequence built from the trailing user query, intermediate events, and final assistant answer", () => {
     const messages: MessageEntry[] = [
       { role: "user", content: "what's the weather?" },
       { role: "assistant", content: [{ type: "thinking", thinking: "let me check" }] },
-      {
-        role: "assistant",
-        content: [{ type: "toolUse", name: "weather", input: { city: "sf" } }],
-      },
+      { role: "assistant", content: [{ type: "toolUse", name: "weather", input: { city: "sf" } }] },
       { role: "toolResult", content: "sunny" },
       { role: "assistant", content: [{ type: "text", text: "it's sunny" }] },
     ];
 
-    const turn = ctxToTurn(messages);
+    const out = ctxToMessages(messages);
 
-    expect(turn).not.toBeNull();
-    expect(turn!.user_query).toBe("what's the weather?");
-    expect(turn!.assistant_answer).toBe("it's sunny");
-    expect(turn!.events).toHaveLength(3);
+    expect(out).toEqual([
+      { role: "user", content: "what's the weather?" },
+      { role: "behaviour", content: "thought: let me check" },
+      { role: "behaviour", content: 'tool weather ← {"city":"sf"}' },
+      { role: "behaviour", content: "toolResult: sunny" },
+      { role: "assistant", content: "it's sunny" },
+    ]);
   });
 
   it("returns null when there is no user message", () => {
     const messages: MessageEntry[] = [
       { role: "assistant", content: [{ type: "text", text: "hi" }] },
     ];
-    expect(ctxToTurn(messages)).toBeNull();
+    expect(ctxToMessages(messages)).toBeNull();
   });
 
   it("returns null when there is no final assistant message", () => {
     const messages: MessageEntry[] = [{ role: "user", content: "hello" }];
-    expect(ctxToTurn(messages)).toBeNull();
+    expect(ctxToMessages(messages)).toBeNull();
   });
 
   it("returns null for an empty ctx", () => {
-    expect(ctxToTurn([])).toBeNull();
+    expect(ctxToMessages([])).toBeNull();
   });
 
   it("uses the trailing user message when earlier user messages exist", () => {
@@ -46,9 +46,11 @@ describe("ctxToTurn", () => {
       { role: "assistant", content: [{ type: "text", text: "done" }] },
     ];
 
-    const turn = ctxToTurn(messages);
-    expect(turn!.user_query).toBe("second");
-    expect(turn!.assistant_answer).toBe("done");
+    const out = ctxToMessages(messages);
+    expect(out).toEqual([
+      { role: "user", content: "second" },
+      { role: "assistant", content: "done" },
+    ]);
   });
 
   it("extracts string content from both string and block forms", () => {
@@ -57,12 +59,14 @@ describe("ctxToTurn", () => {
       { role: "assistant", content: "plain string" },
     ];
 
-    const turn = ctxToTurn(messages);
-    expect(turn!.user_query).toBe("via blocks");
-    expect(turn!.assistant_answer).toBe("plain string");
+    const out = ctxToMessages(messages);
+    expect(out).toEqual([
+      { role: "user", content: "via blocks" },
+      { role: "assistant", content: "plain string" },
+    ]);
   });
 
-  it("strips a leading 'Conversation info (untrusted metadata)' json block from user_query", () => {
+  it("strips a leading 'Conversation info (untrusted metadata)' json block from the user message", () => {
     const messages: MessageEntry[] = [
       {
         role: "user",
@@ -72,11 +76,11 @@ describe("ctxToTurn", () => {
       { role: "assistant", content: [{ type: "text", text: "all good" }] },
     ];
 
-    const turn = ctxToTurn(messages);
-    expect(turn!.user_query).toBe("Gralkor status?");
+    const out = ctxToMessages(messages);
+    expect(out?.[0]).toEqual({ role: "user", content: "Gralkor status?" });
   });
 
-  it("strips a leading 'Sender (untrusted metadata)' json block from user_query", () => {
+  it("strips a leading 'Sender (untrusted metadata)' json block from the user message", () => {
     const messages: MessageEntry[] = [
       {
         role: "user",
@@ -86,8 +90,8 @@ describe("ctxToTurn", () => {
       { role: "assistant", content: [{ type: "text", text: "hi" }] },
     ];
 
-    const turn = ctxToTurn(messages);
-    expect(turn!.user_query).toBe("hello");
+    const out = ctxToMessages(messages);
+    expect(out?.[0]).toEqual({ role: "user", content: "hello" });
   });
 
   it("strips both metadata blocks in sequence when both precede the user text", () => {
@@ -100,8 +104,8 @@ describe("ctxToTurn", () => {
       { role: "assistant", content: [{ type: "text", text: "ok" }] },
     ];
 
-    const turn = ctxToTurn(messages);
-    expect(turn!.user_query).toBe("Check again");
+    const out = ctxToMessages(messages);
+    expect(out?.[0]).toEqual({ role: "user", content: "Check again" });
   });
 
   it("strips both metadata blocks when they appear in reverse order (Sender then Conversation info)", () => {
@@ -114,8 +118,8 @@ describe("ctxToTurn", () => {
       { role: "assistant", content: [{ type: "text", text: "hi" }] },
     ];
 
-    const turn = ctxToTurn(messages);
-    expect(turn!.user_query).toBe("What's up?");
+    const out = ctxToMessages(messages);
+    expect(out?.[0]).toEqual({ role: "user", content: "What's up?" });
   });
 
   it("does not strip metadata-shaped blocks that appear mid-content after real user text", () => {
@@ -126,11 +130,11 @@ describe("ctxToTurn", () => {
       { role: "assistant", content: [{ type: "text", text: "sure" }] },
     ];
 
-    const turn = ctxToTurn(messages);
-    expect(turn!.user_query).toBe(content);
+    const out = ctxToMessages(messages);
+    expect(out?.[0]).toEqual({ role: "user", content });
   });
 
-  it("does not modify assistant_answer even when it contains metadata-looking content", () => {
+  it("does not modify the assistant message even when it contains metadata-looking content", () => {
     const untouched =
       'Conversation info (untrusted metadata):\n```json\n{}\n```\nquoted in response';
     const messages: MessageEntry[] = [
@@ -138,17 +142,31 @@ describe("ctxToTurn", () => {
       { role: "assistant", content: untouched },
     ];
 
-    const turn = ctxToTurn(messages);
-    expect(turn!.assistant_answer).toBe(untouched);
+    const out = ctxToMessages(messages);
+    expect(out?.[out.length - 1]).toEqual({ role: "assistant", content: untouched });
   });
 
-  it("leaves user_query untouched when it does not start with a metadata block", () => {
+  it("leaves the user message untouched when it does not start with a metadata block", () => {
     const messages: MessageEntry[] = [
       { role: "user", content: "just a plain question" },
       { role: "assistant", content: [{ type: "text", text: "sure" }] },
     ];
 
-    const turn = ctxToTurn(messages);
-    expect(turn!.user_query).toBe("just a plain question");
+    const out = ctxToMessages(messages);
+    expect(out?.[0]).toEqual({ role: "user", content: "just a plain question" });
+  });
+
+  it("emits no behaviour message when an intermediate entry has no useful content", () => {
+    const messages: MessageEntry[] = [
+      { role: "user", content: "q" },
+      { role: "assistant", content: [{ type: "text", text: "" }] },
+      { role: "assistant", content: [{ type: "text", text: "ok" }] },
+    ];
+
+    const out = ctxToMessages(messages);
+    expect(out).toEqual([
+      { role: "user", content: "q" },
+      { role: "assistant", content: "ok" },
+    ]);
   });
 });

@@ -27,7 +27,7 @@ before_prompt_build
     then the session's groupId is registered in the session map (sanitised from agentId)
     then the native indexer is fired fire-and-forget (scans workspace/MEMORY.md + workspace/memory/*.md)
   when autoRecall is enabled and a user query can be extracted from the trailing messages
-    then GralkorClient.recall is called with (groupId, sessionId, query)
+    then GralkorClient.recall is called with (groupId, sessionId, query, autoRecall.maxResults)
     when recall returns { ok: block }
       then block is injected into the prompt as prependContext
     when recall returns { ok: null }
@@ -47,8 +47,9 @@ agent_end
   when autoCapture is disabled
     then capture is not called
   when autoCapture is enabled and messages are present
-    then ctx is converted to a single Turn { user_query, assistant_answer, events }
-    then GralkorClient.capture(sessionId, groupId, turn) is called
+    then ctx is converted via ctxToMessages to a canonical [%{role, content}] sequence
+      ordered user → behaviour(s) → assistant
+    then GralkorClient.capture(sessionId, groupId, messages) is called with that sequence
     when capture returns { ok: true }
       then the hook completes silently (server owns buffering + flush)
     if capture returns { error: _ }
@@ -57,7 +58,7 @@ agent_end
     then capture is not called
   when ctx.sessionKey is "temp:slug-generator" (OpenClaw's transient slug-generator sub-agent)
     then capture is not called (harness-internal run, not a real user turn)
-  when the trailing user message starts with the OpenClaw session-reset meta-prompt ("A new session was started via /new or /reset")
+  when the canonical user message starts with the OpenClaw session-reset meta-prompt ("A new session was started via /new or /reset")
     then capture is not called (synthetic greeting turn, not real user content)
   when the hook fires with a sessionKey that isn't registered in the session map
     then the hook returns session_not_registered (safety net — before_prompt_build should have registered it)
@@ -77,34 +78,38 @@ session_end
     then endSession is not called (nothing to flush)
 ```
 
-### ctxToTurn
+### ctxToMessages
 
 ```
-ctxToTurn
+ctxToMessages
   when the ctx has a trailing user message and a final assistant message
-    then user_query is the trailing user message text
-    and assistant_answer is the final assistant message text
-    and events is the list of intermediate messages (thinking, tool calls, tool results) between them, in order
+    then the first message in the result is the trailing user content as %{role: "user"}
+    and the last message is the final assistant content as %{role: "assistant"}
+    and each intermediate ctx entry is rendered as a %{role: "behaviour"} message in order,
+      with content shaped for the server's distillation LLM (e.g. "thought: …", "tool NAME ← …",
+      "toolResult: …")
+    when an intermediate entry has no useful content
+      then no behaviour message is emitted for it
   when the ctx has no trailing user message
-    then ctxToTurn returns null (signalling skip-capture to the hook)
+    then ctxToMessages returns null (signalling skip-capture to the hook)
   when the ctx has no final assistant message
-    then ctxToTurn returns null
+    then ctxToMessages returns null
   when the ctx is empty
-    then ctxToTurn returns null
+    then ctxToMessages returns null
   when the user content has a leading "Conversation info (untrusted metadata):" ```json block (OpenClaw channel-envelope scaffolding)
-    then the block is stripped from user_query
+    then the block is stripped from the user message content
   when the user content has a leading "Sender (untrusted metadata):" ```json block
-    then the block is stripped from user_query
+    then the block is stripped from the user message content
   when both metadata blocks precede the user text
-    then both are stripped in sequence and user_query is the clean remainder
+    then both are stripped in sequence and the user message holds the clean remainder
   when both blocks precede the user text in reverse order (Sender then Conversation info)
-    then both are stripped and user_query is the clean remainder (order-insensitive)
+    then both are stripped and the user message holds the clean remainder (order-insensitive)
   when a metadata-shaped block appears mid-content after real user text
     then nothing is stripped (only leading blocks are harness scaffolding)
   when the user content does not start with a metadata block
-    then user_query is returned unchanged
+    then the user message content is returned unchanged
   when the assistant content contains metadata-looking text
-    then assistant_answer is not modified (stripping applies only to user_query)
+    then the assistant message is not modified (stripping applies only to the user message)
 ```
 
 ### session-map
@@ -136,7 +141,8 @@ session-map
 ```
 memory_search tool
   when the tool is invoked with a query and a registered sessionKey
-    then GralkorClient.memorySearch(groupId, sessionId, query) is called
+    then GralkorClient.memorySearch(groupId, sessionId, query, search.maxResults, search.maxEntityResults) is called
+      — the configured caps are forwarded so the server returns at most that many facts and entity summaries
     when the client returns { ok: text }
       then the tool result is text (server-side interpretation, no client-side LLM)
     if the client returns { error: _ }
@@ -239,9 +245,13 @@ registration-contract
 config
   resolveConfig
     when resolveConfig is called with an empty object
-      then the result equals defaultConfig (autoCapture/autoRecall/search/llm defaults applied)
+      then the result equals defaultConfig — autoCapture/autoRecall/search defaults are applied
+        and llm / embedder are left undefined so the Python server applies its own defaults
+        (single source of truth — the plugin never duplicates server-side provider/model defaults)
     when resolveConfig is called with partial overrides
       then provided fields override defaults and unspecified fields keep their defaults
+    when resolveConfig is called with an llm or embedder ModelConfig
+      then it is passed through unchanged for `createServerManager` to write into config.yaml
     when resolveConfig is called with api-key fields
       then the keys are passed through unchanged (trimming happens later in buildSecretEnv)
   buildSecretEnv

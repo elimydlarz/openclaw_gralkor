@@ -1,13 +1,24 @@
 import { describe, it, expect } from "vitest";
-import {
-  DEFAULT_LLM_PROVIDER,
-  DEFAULT_LLM_MODEL,
-} from "@susu-eng/gralkor-ts";
 import { resolveConfig, defaultConfig, buildSecretEnv } from "../src/config.js";
 
 describe("config — resolveConfig", () => {
   it("returns the default config when given an empty object", () => {
     expect(resolveConfig({})).toMatchObject(defaultConfig);
+  });
+
+  it("leaves llm and embedder undefined by default so the Python server applies its own defaults", () => {
+    const resolved = resolveConfig({});
+    expect(resolved.llm).toBeUndefined();
+    expect(resolved.embedder).toBeUndefined();
+  });
+
+  it("passes through llm and embedder ModelConfig values when provided", () => {
+    const resolved = resolveConfig({
+      llm: { provider: "anthropic", model: "claude-opus-4" },
+      embedder: { provider: "openai", model: "text-embedding-3-small" },
+    });
+    expect(resolved.llm).toEqual({ provider: "anthropic", model: "claude-opus-4" });
+    expect(resolved.embedder).toEqual({ provider: "openai", model: "text-embedding-3-small" });
   });
 
   it("overrides only the fields provided and keeps defaults elsewhere", () => {
@@ -19,10 +30,7 @@ describe("config — resolveConfig", () => {
     expect(merged.autoCapture.enabled).toBe(false);
     expect(merged.autoRecall.maxResults).toBe(3);
     expect(merged.search.maxResults).toBe(7);
-    expect(merged.llm).toEqual({
-      provider: DEFAULT_LLM_PROVIDER,
-      model: DEFAULT_LLM_MODEL,
-    });
+    expect(merged.llm).toBeUndefined();
   });
 
   it("passes api-key fields through unchanged (trimming happens later in buildSecretEnv)", () => {

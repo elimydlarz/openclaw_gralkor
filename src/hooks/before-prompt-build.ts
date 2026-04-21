@@ -1,5 +1,5 @@
 import { sanitizeGroupId, type GralkorClient, type Result } from "@susu-eng/gralkor-ts";
-import { textFromContent, type MessageEntry } from "../ctx-to-turn.js";
+import { textFromContent, type MessageEntry } from "../ctx-to-messages.js";
 import { setSessionGroup } from "../session-map.js";
 
 export interface BeforePromptBuildCtx {
@@ -7,6 +7,8 @@ export interface BeforePromptBuildCtx {
   agentId: string;
   messages: MessageEntry[];
   autoRecall: boolean;
+  /** Max facts to interpret. Forwarded to /recall as max_results. Omit to use the server default. */
+  maxResults?: number;
 }
 
 export interface BeforePromptBuildOutput {
@@ -39,7 +41,12 @@ export async function runBeforePromptBuild(
   const query = trailingUserText(ctx.messages);
   if (query === null) return { ok: {} };
 
-  const recalled = await client.recall(sanitizeGroupId(ctx.agentId), ctx.sessionKey, query);
+  const recalled = await client.recall(
+    sanitizeGroupId(ctx.agentId),
+    ctx.sessionKey,
+    query,
+    ctx.maxResults,
+  );
   if ("error" in recalled) return { error: recalled.error };
 
   if (recalled.ok === null) return { ok: {} };
