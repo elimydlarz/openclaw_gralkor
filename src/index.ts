@@ -35,12 +35,6 @@ try {
 let configLogged = false;
 let serverManagerStarted = false;
 
-/** @internal */
-export function _resetForTesting(): void {
-  configLogged = false;
-  serverManagerStarted = false;
-}
-
 export const id = "openclaw-gralkor";
 export const name = "Gralkor Memory (OpenClaw)";
 export const description =
