@@ -67,8 +67,6 @@ agent_end
 
 ```
 session_end
-  when the event has no sessionKey (or it is blank)
-    then the hook throws before any side effects (no endSession call)
   when the hook fires with a registered sessionKey
     then GralkorClient.endSession(sessionId) is called
     when endSession returns { ok: true }
