@@ -17,17 +17,17 @@ describe("registration-contract — hooks invoke requireSessionKey at their boun
   });
 
   for (const event of ["before_prompt_build", "agent_end", "session_end"] as const) {
-    it(`${event} throws when the event has no sessionKey`, async () => {
-      const handler = api.handlers.get(event)!;
-      await expect(handler({ agentId: "user-1", messages: [] })).rejects.toThrow(
-        /Gralkor requires a non-blank session_id/,
-      );
-    });
-
-    it(`${event} throws when the event's sessionKey is blank`, async () => {
+    it(`${event} throws when ctx has no sessionKey`, async () => {
       const handler = api.handlers.get(event)!;
       await expect(
-        handler({ sessionKey: "", agentId: "user-1", messages: [] }),
+        handler({ messages: [] }, { agentId: "user-1" }),
+      ).rejects.toThrow(/Gralkor requires a non-blank session_id/);
+    });
+
+    it(`${event} throws when ctx.sessionKey is blank`, async () => {
+      const handler = api.handlers.get(event)!;
+      await expect(
+        handler({ messages: [] }, { sessionKey: "", agentId: "user-1" }),
       ).rejects.toThrow(/Gralkor requires a non-blank session_id/);
     });
   }

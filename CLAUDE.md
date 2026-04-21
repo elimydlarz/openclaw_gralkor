@@ -221,12 +221,15 @@ native-indexer
 
 ```
 registration-contract
-  each hook and tool invokes requireSessionKey(event.sessionKey) at its boundary before any work
-    when before_prompt_build fires without sessionKey (undefined or blank)
+  each hook and tool invokes requireSessionKey(ctx.sessionKey) at its boundary before any work
+    — OpenClaw dispatches hooks as `handler(event, ctx)` and tool factories as `factory(ctx)`;
+      sessionKey is an identity field on ctx, never on the hook event
+      (see OPENCLAW_INTEGRATION_2026-04-02.md)
+    when before_prompt_build fires with a ctx that has no sessionKey (undefined or blank)
       then the hook throws synchronously before recall, native-index, or session registration
-    when agent_end fires without sessionKey
+    when agent_end fires with a ctx that has no sessionKey
       then the hook throws synchronously before capture
-    when session_end fires without sessionKey
+    when session_end fires with a ctx that has no sessionKey
       then the hook throws synchronously before endSession
     when memory_search.execute runs and the tool-registration ctx lacks a sessionKey
       then execute throws synchronously before any client call

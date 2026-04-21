@@ -40,7 +40,7 @@ Compared to previous versions of this plugin: the client-side debouncer, flush r
 
 ## Session and group identity
 
-- `session_id` is OpenClaw's `sessionKey` — required at every boundary. Hooks and tools throw synchronously if the event/ctx arrives without a non-blank `sessionKey`; there is no `"default"` bucket.
+- `session_id` is OpenClaw's `sessionKey` — required at every boundary. Hooks and tools throw synchronously if `ctx.sessionKey` is missing or blank; there is no `"default"` bucket. (OpenClaw's argument shape for hooks and tool factories is documented in `OPENCLAW_INTEGRATION_2026-04-02.md`.)
 - `group_id` is the sanitised `agentId` (hyphens replaced with underscores — a RediSearch constraint). Per-agent graph partition; agents never see each other's memory.
 
 `before_prompt_build` is the single writer of the `sessionKey → groupId` map. Tools and later hooks look up that map — if `session_not_registered` errors appear, it means the tool fired before `before_prompt_build`, which shouldn't happen under normal OpenClaw flow.

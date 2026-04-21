@@ -105,60 +105,74 @@ export function registerTools(
   });
 }
 
+/**
+ * OpenClaw dispatches hooks as `handler(event, ctx)`. Identity fields
+ * (sessionKey, agentId, sessionId, workspaceDir, …) live on `ctx`; the
+ * `event` carries only the hook-specific payload (messages, prompt,
+ * durationMs, …). See OPENCLAW_INTEGRATION_2026-04-02.md for the full
+ * argument contract.
+ */
+type HookCtx = {
+  sessionKey?: string;
+  agentId?: string;
+  sessionId?: string;
+  workspaceDir?: string;
+};
+
 export function registerHooks(
   api: MemoryPluginApi,
   client: GralkorClient,
   config: GralkorPluginConfig,
 ): void {
-  api.on("before_prompt_build", async (event: {
-    sessionKey?: string;
-    agentId?: string;
-    messages?: { role: string; content: unknown }[];
-    workspaceDir?: string;
-  }) => {
-    const sessionKey = requireSessionKey(event.sessionKey);
-    const agentId = event.agentId ?? sessionKey;
+  api.on(
+    "before_prompt_build",
+    async (
+      event: { messages?: { role: string; content: unknown }[] },
+      ctx: HookCtx,
+    ) => {
+      const sessionKey = requireSessionKey(ctx.sessionKey);
+      const agentId = ctx.agentId ?? sessionKey;
 
-    // Fire-and-forget native indexer — doesn't block the prompt build.
-    const workspaceDir = event.workspaceDir ?? config.workspaceDir;
-    if (workspaceDir) {
-      void runNativeIndexer(client, workspaceDir, sanitizeGroupId(agentId)).catch((err) => {
-        console.error("[gralkor] native-index error:", err);
+      // Fire-and-forget native indexer — doesn't block the prompt build.
+      const workspaceDir = ctx.workspaceDir ?? config.workspaceDir;
+      if (workspaceDir) {
+        void runNativeIndexer(client, workspaceDir, sanitizeGroupId(agentId)).catch((err) => {
+          console.error("[gralkor] native-index error:", err);
+        });
+      }
+
+      const result = await runBeforePromptBuild(client, {
+        sessionKey,
+        agentId,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        messages: (event.messages ?? []) as any,
+        autoRecall: config.autoRecall.enabled,
+        maxResults: config.autoRecall.maxResults,
       });
-    }
+      if ("error" in result) throw new Error(JSON.stringify(result.error));
+      return result.ok;
+    },
+  );
 
-    const result = await runBeforePromptBuild(client, {
-      sessionKey,
-      agentId,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      messages: (event.messages ?? []) as any,
-      autoRecall: config.autoRecall.enabled,
-      maxResults: config.autoRecall.maxResults,
-    });
-    if ("error" in result) throw new Error(JSON.stringify(result.error));
-    return result.ok;
-  });
+  api.on(
+    "agent_end",
+    async (
+      event: { messages?: { role: string; content: unknown }[] },
+      ctx: HookCtx,
+    ) => {
+      const sessionKey = requireSessionKey(ctx.sessionKey);
+      const result = await runAgentEnd(client, {
+        sessionKey,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        messages: (event.messages ?? []) as any,
+        autoCapture: config.autoCapture.enabled,
+      });
+      if ("error" in result) throw new Error(JSON.stringify(result.error));
+    },
+  );
 
-  api.on("agent_end", async (event: {
-    sessionKey?: string;
-    agentId?: string;
-    messages?: { role: string; content: unknown }[];
-  }) => {
-    const sessionKey = requireSessionKey(event.sessionKey);
-    const result = await runAgentEnd(client, {
-      sessionKey,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      messages: (event.messages ?? []) as any,
-      autoCapture: config.autoCapture.enabled,
-    });
-    if ("error" in result) throw new Error(JSON.stringify(result.error));
-  });
-
-  api.on("session_end", async (event: {
-    sessionKey?: string;
-    agentId?: string;
-  }) => {
-    const sessionKey = requireSessionKey(event.sessionKey);
+  api.on("session_end", async (_event: unknown, ctx: HookCtx) => {
+    const sessionKey = requireSessionKey(ctx.sessionKey);
     const result = await runSessionEnd(client, { sessionKey });
     if ("error" in result) throw new Error(JSON.stringify(result.error));
   });
