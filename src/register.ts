@@ -116,8 +116,7 @@ export function registerHooks(
     // Fire-and-forget native indexer — doesn't block the prompt build.
     const workspaceDir = event.workspaceDir ?? config.workspaceDir;
     if (workspaceDir) {
-      const groupId = agentId.replace(/-/g, "_");
-      void runNativeIndexer(client, workspaceDir, groupId).catch((err) => {
+      void runNativeIndexer(client, workspaceDir, sanitizeGroupId(agentId)).catch((err) => {
         console.error("[gralkor] native-index error:", err);
       });
     }
