@@ -21,7 +21,6 @@ export interface GralkorPluginConfig {
   autoCapture: { enabled: boolean };
   autoRecall: { enabled: boolean; maxResults: number };
   search: { maxResults: number; maxEntityResults: number };
-  idleTimeoutMs: number;
   llm: ModelConfig;
   embedder?: ModelConfig;
   ontology?: OntologyConfig;
