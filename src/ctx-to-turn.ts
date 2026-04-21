@@ -80,12 +80,8 @@ function textFromContent(content: string | ContentBlock[]): string {
  * if present.
  */
 const INBOUND_METADATA_BLOCK =
-  /^(Conversation info|Sender) \(untrusted metadata\):[ \t]*\n```json\n[\s\S]*?\n```[ \t]*\n*/;
+  /^(?:(?:Conversation info|Sender) \(untrusted metadata\):[ \t]*\n```json\n[\s\S]*?\n```[ \t]*\n*)+/;
 
 function stripInboundMetadataBlocks(text: string): string {
-  let remaining = text;
-  while (INBOUND_METADATA_BLOCK.test(remaining)) {
-    remaining = remaining.replace(INBOUND_METADATA_BLOCK, "");
-  }
-  return remaining;
+  return text.replace(INBOUND_METADATA_BLOCK, "");
 }
