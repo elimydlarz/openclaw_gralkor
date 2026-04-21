@@ -8,7 +8,7 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyFn = (...args: any[]) => any;
 
-export interface PluginApiBase {
+export interface MemoryPluginApi {
   pluginConfig?: Record<string, unknown>;
   on(event: string, handler: AnyFn): void;
   registerService(service: {
@@ -28,9 +28,6 @@ export interface PluginApiBase {
     }) => void | Promise<void>,
     opts?: { commands?: string[] },
   ): void;
-}
-
-export interface MemoryPluginApi extends PluginApiBase {
   registerTool(
     tool: { name: string; description: string; parameters: unknown; execute: AnyFn },
     opts?: { optional?: boolean },
