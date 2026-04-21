@@ -23,8 +23,6 @@ OpenClaw plugin that adapts [Gralkor](https://github.com/elimydlarz/gralkor) —
 
 ```
 before_prompt_build
-  when the event has no sessionKey (or it is blank)
-    then the hook throws before any side effects (no registration, no recall, no native-index)
   when the hook fires with a sessionKey
     then the session's groupId is registered in the session map (sanitised from agentId)
     then the native indexer is fired fire-and-forget (scans workspace/MEMORY.md + workspace/memory/*.md)
