@@ -63,7 +63,7 @@ function findLastIndex<T>(arr: T[], pred: (item: T) => boolean): number {
   return -1;
 }
 
-function textFromContent(content: string | ContentBlock[]): string {
+export function textFromContent(content: string | ContentBlock[]): string {
   if (typeof content === "string") return content;
   return content
     .filter((b) => b.type === "text" || b.type === "output_text")
