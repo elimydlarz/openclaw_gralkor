@@ -44,8 +44,6 @@ before_prompt_build
 
 ```
 agent_end
-  when the event has no sessionKey (or it is blank)
-    then the hook throws before any side effects (no capture)
   when autoCapture is disabled
     then capture is not called
   when autoCapture is enabled and messages are present
@@ -61,6 +59,8 @@ agent_end
     then capture is not called (harness-internal run, not a real user turn)
   when the trailing user message starts with the OpenClaw session-reset meta-prompt ("A new session was started via /new or /reset")
     then capture is not called (synthetic greeting turn, not real user content)
+  when the hook fires with a sessionKey that isn't registered in the session map
+    then the hook returns session_not_registered (safety net — before_prompt_build should have registered it)
 ```
 
 ### session_end hook
