@@ -47,7 +47,6 @@ export function resolveConfig(
     autoCapture: {
       enabled: raw.autoCapture?.enabled ?? defaultConfig.autoCapture.enabled,
     },
-    idleTimeoutMs: raw.idleTimeoutMs ?? defaultConfig.idleTimeoutMs,
     autoRecall: {
       enabled: raw.autoRecall?.enabled ?? defaultConfig.autoRecall.enabled,
       maxResults:
