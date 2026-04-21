@@ -17,20 +17,19 @@ export function getSessionGroup(sessionKey: string): string | null {
 }
 
 /**
- * Derive the Gralkor session_id the server should see for this OpenClaw
- * invocation. OpenClaw's sessionKey is the natural choice when present
- * (one per conversation). When absent, agentId is the next-best unique
- * identifier — it at least keeps different agents from colliding. Only
- * when neither is present do we fall back to the shared "default" bucket,
- * and callers should treat that as a degenerate case.
+ * Gralkor requires a non-blank session_id at every boundary. Call this
+ * at the top of each hook and inside each tool's execute — there is no
+ * "default" bucket and no silent fallback. If OpenClaw dispatches an
+ * event without a sessionKey, that's a bug in the caller's lifecycle,
+ * not something this plugin masks.
  */
-export function resolveSessionId(
-  sessionKey: string | undefined,
-  agentId: string | undefined,
-): string {
-  if (sessionKey) return sessionKey;
-  if (agentId) return agentId;
-  return "default";
+export function requireSessionKey(sessionKey: string | undefined | null): string {
+  if (typeof sessionKey !== "string" || sessionKey.length === 0) {
+    throw new Error(
+      "Gralkor requires a non-blank session_id; OpenClaw did not provide a sessionKey",
+    );
+  }
+  return sessionKey;
 }
 
 /** Reset module-level state. Test-only. */

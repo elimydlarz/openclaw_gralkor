@@ -31,7 +31,7 @@ Restart OpenClaw. First boot takes 1–2 min while `uv sync` resolves Graphiti +
 Three hooks + two tools, all fed by the Gralkor HTTP API:
 
 - **`before_prompt_build`** — registers the session's group, scans workspace memory files for new content (`MEMORY.md`, `memory/*.md`), and auto-recalls relevant facts which get injected into the prompt.
-- **`agent_end`** — posts the just-finished turn to `/capture`. The Gralkor server owns the capture buffer and flushes on idle (default 5 min) or on explicit session-end.
+- **`agent_end`** — posts the just-finished turn to `/capture`. The Gralkor server owns the capture buffer and flushes on idle (default 5 min) or on explicit session-end. OpenClaw-specific filtering happens here: harness-internal sub-agent runs (e.g. `sessionKey === "temp:slug-generator"`) and synthetic turns (the `/new`/`/reset` meta-prompt) are skipped, and `Conversation info` / `Sender` `(untrusted metadata)` envelope blocks are stripped from `user_query` before capture.
 - **`session_end`** — posts `/session_end` to flush the session's buffer now instead of waiting for the idle window.
 - **`memory_search` tool** — `POST /tools/memory_search`. The server does a slow-mode graph search + LLM interpretation and returns a single text blob.
 - **`memory_add` tool** — `POST /tools/memory_add`. Fire-and-forget; the server queues the add for async Graphiti extraction.
@@ -40,7 +40,7 @@ Compared to previous versions of this plugin: the client-side debouncer, flush r
 
 ## Session and group identity
 
-- `session_id` is OpenClaw's `sessionKey` (falling back to `agentId`, then `"default"`).
+- `session_id` is OpenClaw's `sessionKey` — required at every boundary. Hooks and tools throw synchronously if the event/ctx arrives without a non-blank `sessionKey`; there is no `"default"` bucket.
 - `group_id` is the sanitised `agentId` (hyphens replaced with underscores — a RediSearch constraint). Per-agent graph partition; agents never see each other's memory.
 
 `before_prompt_build` is the single writer of the `sessionKey → groupId` map. Tools and later hooks look up that map — if `session_not_registered` errors appear, it means the tool fired before `before_prompt_build`, which shouldn't happen under normal OpenClaw flow.
@@ -60,7 +60,7 @@ Set under `plugins.entries.openclaw-gralkor.config` in `~/.openclaw/openclaw.jso
 
 ## Testing
 
-Unit tests use `GralkorInMemoryClient` from `@susu-eng/gralkor-ts/testing` — real behaviour, no network, no Python. Full suite in 43 tests via `pnpm test`.
+Unit tests use `GralkorInMemoryClient` from `@susu-eng/gralkor-ts/testing` — real behaviour, no network, no Python. Full suite runs via `pnpm test`.
 
 ## Development
 

@@ -46,7 +46,9 @@ export function ctxToTurn(messages: MessageEntry[]): Turn | null {
   }
   if (lastAssistantIdx === -1) return null;
 
-  const user_query = textFromContent(messages[lastUserIdx].content);
+  const user_query = stripInboundMetadataBlocks(
+    textFromContent(messages[lastUserIdx].content),
+  );
   const assistant_answer = textFromContent(messages[lastAssistantIdx].content);
 
   const events: unknown[] = messages.slice(lastUserIdx + 1, lastAssistantIdx);
@@ -67,4 +69,23 @@ function textFromContent(content: string | ContentBlock[]): string {
     .filter((b) => b.type === "text" || b.type === "output_text")
     .map((b) => b.text ?? "")
     .join("");
+}
+
+/**
+ * OpenClaw prepends `Conversation info (untrusted metadata):` and
+ * `Sender (untrusted metadata):` ```json fenced blocks to channel-inbound
+ * user messages so the LLM has routing context. Those blocks are harness
+ * scaffolding — not semantic user content — so strip them from the text
+ * we capture as `user_query`. Order-insensitive; both blocks are removed
+ * if present.
+ */
+const INBOUND_METADATA_BLOCK =
+  /^(Conversation info|Sender) \(untrusted metadata\):[ \t]*\n```json\n[\s\S]*?\n```[ \t]*\n*/;
+
+function stripInboundMetadataBlocks(text: string): string {
+  let remaining = text;
+  while (INBOUND_METADATA_BLOCK.test(remaining)) {
+    remaining = remaining.replace(INBOUND_METADATA_BLOCK, "");
+  }
+  return remaining;
 }

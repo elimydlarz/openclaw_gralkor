@@ -103,4 +103,44 @@ describe("agent_end hook", () => {
     expect(result).toEqual({ error: "session_not_registered" });
     expect(client.captures).toEqual([]);
   });
+
+  it("skips capture for OpenClaw's transient slug-generator run (sessionKey = 'temp:slug-generator')", async () => {
+    setSessionGroup("temp:slug-generator", "any-agent");
+
+    const result = await runAgentEnd(client, {
+      sessionKey: "temp:slug-generator",
+      messages: [
+        {
+          role: "user",
+          content:
+            "Based on this conversation, generate a short 1-2 word filename slug...",
+        },
+        { role: "assistant", content: [{ type: "text", text: "bug-fix" }] },
+      ],
+      autoCapture: true,
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(client.captures).toEqual([]);
+  });
+
+  it("skips capture when the trailing user message is the OpenClaw session-reset meta-prompt", async () => {
+    setSessionGroup("sess-1", "user-1");
+
+    const result = await runAgentEnd(client, {
+      sessionKey: "sess-1",
+      messages: [
+        {
+          role: "user",
+          content:
+            "A new session was started via /new or /reset. Run your Session Startup sequence - read the required files before responding to the user.",
+        },
+        { role: "assistant", content: [{ type: "text", text: "Hey Eli." }] },
+      ],
+      autoCapture: true,
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(client.captures).toEqual([]);
+  });
 });

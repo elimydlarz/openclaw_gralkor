@@ -61,4 +61,68 @@ describe("ctxToTurn", () => {
     expect(turn!.user_query).toBe("via blocks");
     expect(turn!.assistant_answer).toBe("plain string");
   });
+
+  it("strips a leading 'Conversation info (untrusted metadata)' json block from user_query", () => {
+    const messages: MessageEntry[] = [
+      {
+        role: "user",
+        content:
+          'Conversation info (untrusted metadata):\n```json\n{"message_id":"3991"}\n```\nGralkor status?',
+      },
+      { role: "assistant", content: [{ type: "text", text: "all good" }] },
+    ];
+
+    const turn = ctxToTurn(messages);
+    expect(turn!.user_query).toBe("Gralkor status?");
+  });
+
+  it("strips a leading 'Sender (untrusted metadata)' json block from user_query", () => {
+    const messages: MessageEntry[] = [
+      {
+        role: "user",
+        content:
+          'Sender (untrusted metadata):\n```json\n{"name":"Alice"}\n```\nhello',
+      },
+      { role: "assistant", content: [{ type: "text", text: "hi" }] },
+    ];
+
+    const turn = ctxToTurn(messages);
+    expect(turn!.user_query).toBe("hello");
+  });
+
+  it("strips both metadata blocks in sequence when both precede the user text", () => {
+    const messages: MessageEntry[] = [
+      {
+        role: "user",
+        content:
+          'Conversation info (untrusted metadata):\n```json\n{"message_id":"3991"}\n```\nSender (untrusted metadata):\n```json\n{"name":"Eli"}\n```\nCheck again',
+      },
+      { role: "assistant", content: [{ type: "text", text: "ok" }] },
+    ];
+
+    const turn = ctxToTurn(messages);
+    expect(turn!.user_query).toBe("Check again");
+  });
+
+  it("does not modify assistant_answer even when it contains metadata-looking content", () => {
+    const untouched =
+      'Conversation info (untrusted metadata):\n```json\n{}\n```\nquoted in response';
+    const messages: MessageEntry[] = [
+      { role: "user", content: "tell me" },
+      { role: "assistant", content: untouched },
+    ];
+
+    const turn = ctxToTurn(messages);
+    expect(turn!.assistant_answer).toBe(untouched);
+  });
+
+  it("leaves user_query untouched when it does not start with a metadata block", () => {
+    const messages: MessageEntry[] = [
+      { role: "user", content: "just a plain question" },
+      { role: "assistant", content: [{ type: "text", text: "sure" }] },
+    ];
+
+    const turn = ctxToTurn(messages);
+    expect(turn!.user_query).toBe("just a plain question");
+  });
 });

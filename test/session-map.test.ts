@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   setSessionGroup,
   getSessionGroup,
-  resolveSessionId,
+  requireSessionKey,
   resetSessionMap,
 } from "../src/session-map.js";
 
@@ -28,17 +28,27 @@ describe("session-map", () => {
     });
   });
 
-  describe("resolveSessionId", () => {
-    it("prefers sessionKey when present", () => {
-      expect(resolveSessionId("sess-1", "agent-1")).toBe("sess-1");
+  describe("requireSessionKey", () => {
+    it("returns the sessionKey when it is a non-blank string", () => {
+      expect(requireSessionKey("sess-1")).toBe("sess-1");
     });
 
-    it("falls back to agentId when sessionKey is absent", () => {
-      expect(resolveSessionId(undefined, "agent-1")).toBe("agent-1");
+    it("throws when sessionKey is undefined", () => {
+      expect(() => requireSessionKey(undefined)).toThrow(
+        /Gralkor requires a non-blank session_id/,
+      );
     });
 
-    it("falls back to 'default' when both are absent", () => {
-      expect(resolveSessionId(undefined, undefined)).toBe("default");
+    it("throws when sessionKey is null", () => {
+      expect(() => requireSessionKey(null)).toThrow(
+        /Gralkor requires a non-blank session_id/,
+      );
+    });
+
+    it("throws when sessionKey is the empty string", () => {
+      expect(() => requireSessionKey("")).toThrow(
+        /Gralkor requires a non-blank session_id/,
+      );
     });
   });
 });

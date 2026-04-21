@@ -1,8 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { ServerManager } from "@susu-eng/gralkor-ts";
-import { registerServerService } from "../src/register.js";
+import type { ServerManager, GralkorClient } from "@susu-eng/gralkor-ts";
+import { GralkorInMemoryClient } from "@susu-eng/gralkor-ts/testing";
+import {
+  registerServerService,
+  registerHooks,
+  registerTools,
+} from "../src/register.js";
 import type { GralkorPluginConfig } from "../src/config.js";
 import type { MemoryPluginApi } from "../src/types.js";
+import { resetSessionMap } from "../src/session-map.js";
 
 const gralkorTsMocks = vi.hoisted(() => ({
   createServerManager: vi.fn<[], ServerManager>(),
@@ -24,18 +30,30 @@ vi.mock("@susu-eng/gralkor-ts", async (importOriginal) => {
 
 function makeApi(): MemoryPluginApi & {
   registered: { id: string; start: () => unknown; stop: () => unknown }[];
+  handlers: Map<string, (event: unknown) => Promise<unknown>>;
+  toolFactories: ((ctx: unknown) => unknown)[];
 } {
   const registered: { id: string; start: () => unknown; stop: () => unknown }[] = [];
+  const handlers = new Map<string, (event: unknown) => Promise<unknown>>();
+  const toolFactories: ((ctx: unknown) => unknown)[] = [];
   return {
-    on: vi.fn(),
-    registerTool: vi.fn(),
+    on: vi.fn((event: string, handler: (event: unknown) => Promise<unknown>) => {
+      handlers.set(event, handler);
+    }),
+    registerTool: vi.fn((factory: (ctx: unknown) => unknown) => {
+      toolFactories.push(factory);
+    }),
     registerCli: vi.fn(),
     registerService: vi.fn((svc) => {
       registered.push(svc);
     }),
     registered,
+    handlers,
+    toolFactories,
   } as unknown as MemoryPluginApi & {
     registered: { id: string; start: () => unknown; stop: () => unknown }[];
+    handlers: Map<string, (event: unknown) => Promise<unknown>>;
+    toolFactories: ((ctx: unknown) => unknown)[];
   };
 }
 
@@ -122,5 +140,88 @@ describe("registerServerService (plugin-lifecycle tree)", () => {
       );
       expect(startSpy).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("registerHooks — sessionKey is required", () => {
+  let client: GralkorClient;
+  let api: ReturnType<typeof makeApi>;
+
+  beforeEach(() => {
+    resetSessionMap();
+    client = new GralkorInMemoryClient();
+    api = makeApi();
+    registerHooks(api, client, makeConfig());
+  });
+
+  for (const event of ["before_prompt_build", "agent_end", "session_end"] as const) {
+    it(`${event} throws when the event has no sessionKey`, async () => {
+      const handler = api.handlers.get(event)!;
+      await expect(handler({ agentId: "user-1", messages: [] })).rejects.toThrow(
+        /Gralkor requires a non-blank session_id/,
+      );
+    });
+
+    it(`${event} throws when the event's sessionKey is blank`, async () => {
+      const handler = api.handlers.get(event)!;
+      await expect(
+        handler({ sessionKey: "", agentId: "user-1", messages: [] }),
+      ).rejects.toThrow(/Gralkor requires a non-blank session_id/);
+    });
+  }
+});
+
+describe("registerTools — sessionKey is required", () => {
+  let client: GralkorClient;
+  let api: ReturnType<typeof makeApi>;
+
+  beforeEach(() => {
+    resetSessionMap();
+    client = new GralkorInMemoryClient();
+    api = makeApi();
+    registerTools(api, client);
+  });
+
+  for (const toolName of [
+    "memory_search",
+    "memory_add",
+    "memory_build_communities",
+  ] as const) {
+    it(`${toolName} execute throws when ctx has no sessionKey`, async () => {
+      const factory = api.toolFactories[0];
+      const tools = factory({ agentId: "user-1" }) as {
+        name: string;
+        execute: (args: Record<string, string>) => Promise<unknown>;
+      }[];
+      const tool = tools.find((t) => t.name === toolName)!;
+      await expect(
+        tool.execute({ query: "q", content: "c" }),
+      ).rejects.toThrow(/Gralkor requires a non-blank session_id/);
+    });
+
+    it(`${toolName} execute throws when ctx.sessionKey is blank`, async () => {
+      const factory = api.toolFactories[0];
+      const tools = factory({ sessionKey: "", agentId: "user-1" }) as {
+        name: string;
+        execute: (args: Record<string, string>) => Promise<unknown>;
+      }[];
+      const tool = tools.find((t) => t.name === toolName)!;
+      await expect(
+        tool.execute({ query: "q", content: "c" }),
+      ).rejects.toThrow(/Gralkor requires a non-blank session_id/);
+    });
+  }
+
+  it("memory_build_indices execute does not require a sessionKey (whole-graph admin)", async () => {
+    const factory = api.toolFactories[0];
+    const tools = factory({}) as {
+      name: string;
+      execute: () => Promise<string>;
+    }[];
+    const tool = tools.find((t) => t.name === "memory_build_indices")!;
+    (client as GralkorInMemoryClient).setResponse("buildIndices", {
+      ok: { status: "ok" },
+    });
+    await expect(tool.execute()).resolves.toMatch(/Indices rebuilt/);
   });
 });

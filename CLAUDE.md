@@ -7,7 +7,8 @@ OpenClaw plugin that adapts [Gralkor](https://github.com/elimydlarz/gralkor) —
 - **`@susu-eng/gralkor-ts` dep** owns the HTTP client, the Python-subprocess manager, and the boot-readiness helper. This plugin is pure harness glue on top of that adapter.
 - **Server-side ownership.** The Python server owns capture buffering (session-keyed append + idle flush + session_end flush + retries), per-turn behaviour distillation, and recall-result interpretation. None of that exists client-side here. The plugin posts turns; the server does the thinking.
 - **Per-turn capture.** Each `agent_end` invocation is one turn. The plugin extracts `{user_query, assistant_answer, events}` from the OpenClaw context and `POST /capture`s it. Multiple turns for the same session accumulate in the server's capture buffer; the server flushes on idle or on explicit `POST /session_end`.
-- **Session identity.** `session_id` is derived from OpenClaw's `sessionKey` (falling back to `agentId`, then `"default"`). `group_id` is the sanitised `agentId` — per-agent graph partition; agents never see each other's memory. Mapping lives in a module-level Map so concurrent plugin reloads within one process share it.
+- **Harness-specific filtering lives here.** The Gralkor server is harness-agnostic — it stores what it receives. This adapter is the only layer that knows OpenClaw's conventions, so it's responsible for (a) skipping `agent_end` events that come from harness-internal sub-agent runs (e.g. `sessionKey === "temp:slug-generator"`, whose prompt embeds an inline dump of the real conversation) and synthetic turns (session-reset meta-prompt starting with `"A new session was started via /new or /reset"`), and (b) stripping harness scaffolding from real user content (`Conversation info (untrusted metadata):` and `Sender (untrusted metadata):` ```json envelope blocks) before it reaches `user_query`. Filter rules are sourced from OpenClaw (`src/hooks/llm-slug-generator.ts`, `src/auto-reply/reply/session-reset-prompt.ts`) — keep them pinned to those files.
+- **Session identity.** `session_id` is OpenClaw's `sessionKey` — required. Missing/blank sessionKey fails loudly; there is no `"default"` bucket. `group_id` is the sanitised `agentId` — per-agent graph partition; agents never see each other's memory. Mapping lives in a module-level Map so concurrent plugin reloads within one process share it.
 - **Fail-fast.** Gralkor HTTP errors surface as `{ error }` from `gralkor-ts`'s `GralkorHttpClient`. The hooks let them propagate; OpenClaw decides.
 - **Native indexer.** `before_prompt_build` fires a fire-and-forget scan of the workspace (`MEMORY.md` + `memory/*.md`) and calls `memoryAdd` for new content. Marker-based idempotence keeps re-runs cheap.
 
@@ -22,7 +23,9 @@ OpenClaw plugin that adapts [Gralkor](https://github.com/elimydlarz/gralkor) —
 
 ```
 before_prompt_build
-  when the hook fires
+  when the event has no sessionKey (or it is blank)
+    then the hook throws before any side effects (no registration, no recall, no native-index)
+  when the hook fires with a sessionKey
     then the session's groupId is registered in the session map (sanitised from agentId)
     then the native indexer is fired fire-and-forget (scans workspace/MEMORY.md + workspace/memory/*.md)
   when autoRecall is enabled and a user query can be extracted from the trailing messages
@@ -43,6 +46,8 @@ before_prompt_build
 
 ```
 agent_end
+  when the event has no sessionKey (or it is blank)
+    then the hook throws before any side effects (no capture)
   when autoCapture is disabled
     then capture is not called
   when autoCapture is enabled and messages are present
@@ -54,12 +59,18 @@ agent_end
       then the hook lets the error surface
   when messages are empty
     then capture is not called
+  when ctx.sessionKey is "temp:slug-generator" (OpenClaw's transient slug-generator sub-agent)
+    then capture is not called (harness-internal run, not a real user turn)
+  when the trailing user message starts with the OpenClaw session-reset meta-prompt ("A new session was started via /new or /reset")
+    then capture is not called (synthetic greeting turn, not real user content)
 ```
 
 ### session_end hook
 
 ```
 session_end
+  when the event has no sessionKey (or it is blank)
+    then the hook throws before any side effects (no endSession call)
   when the hook fires with a registered sessionKey
     then GralkorClient.endSession(sessionId) is called
     when endSession returns { ok: true }
@@ -84,6 +95,16 @@ ctxToTurn
     then ctxToTurn returns null
   when the ctx is empty
     then ctxToTurn returns null
+  when the user content has a leading "Conversation info (untrusted metadata):" ```json block (OpenClaw channel-envelope scaffolding)
+    then the block is stripped from user_query
+  when the user content has a leading "Sender (untrusted metadata):" ```json block
+    then the block is stripped from user_query
+  when both metadata blocks precede the user text
+    then both are stripped in sequence and user_query is the clean remainder
+  when the user content does not start with a metadata block
+    then user_query is returned unchanged
+  when the assistant content contains metadata-looking text
+    then assistant_answer is not modified (stripping applies only to user_query)
 ```
 
 ### session-map
@@ -95,32 +116,37 @@ session-map
   when getSessionGroup(sessionKey) is called and the sessionKey was previously set
     then the sanitised groupId is returned
   when getSessionGroup(sessionKey) is called and the sessionKey was never set
-    then null is returned (caller decides whether to fall back or error)
-  when resolveSessionId(sessionKey, agentId) is called
-    then sessionKey is used if present
-    and agentId is used if sessionKey is absent
-    and "default" is used if both are absent
+    then null is returned (caller surfaces session_not_registered)
+  session id is required at every boundary — there is no defaulting
+    when a hook or tool receives a missing or blank sessionKey from OpenClaw
+      then it throws synchronously (Gralkor requires a non-blank session_id)
+    there is no "default" bucket; different sessions never share memory
 ```
 
 ### memory_search tool
 
 ```
 memory_search tool
-  when the tool is invoked with a query and session context
+  when the tool-registration ctx has no sessionKey (or it is blank)
+    then the tool's execute throws (Gralkor requires a non-blank session_id)
+  when the tool is invoked with a query and a registered sessionKey
     then GralkorClient.memorySearch(groupId, sessionId, query) is called
     when the client returns { ok: text }
       then the tool result is text (server-side interpretation, no client-side LLM)
     if the client returns { error: _ }
       then the tool surfaces the error
-  when the session's groupId is not registered
-    then the tool returns an explicit "session not registered" error (does not fall back to "default")
+  when the sessionKey is present but not registered in the session map
+    then the tool returns an explicit "session_not_registered" error (before_prompt_build
+      must have fired at least once for this sessionKey)
 ```
 
 ### memory_add tool
 
 ```
 memory_add tool
-  when the tool is invoked with content and session context
+  when the tool-registration ctx has no sessionKey (or it is blank)
+    then the tool's execute throws (Gralkor requires a non-blank session_id)
+  when the tool is invoked with content and a registered sessionKey
     then GralkorClient.memoryAdd(groupId, content, sourceDescription) is called
     when the client returns { ok: true }
       then the tool returns a success message (server queues for async ingest)
@@ -146,14 +172,16 @@ memory_build_indices tool
 
 ```
 memory_build_communities tool
-  when the tool is invoked
+  when the tool-registration ctx has no sessionKey (or it is blank)
+    then the tool's execute throws (Gralkor requires a non-blank session_id)
+  when the tool is invoked with a registered sessionKey
     then GralkorClient.buildCommunities is called with the groupId for the current session
     when the client returns { ok: { communities, edges } }
       then the tool result reports the community and edge counts
     if the client returns { error: _ }
       then the tool surfaces the error
-  when the session's groupId is not registered
-    then the tool returns session_not_registered (does not fall back to "default")
+  when the sessionKey is present but not registered in the session map
+    then the tool returns "session_not_registered"
 ```
 
 ### native-indexer

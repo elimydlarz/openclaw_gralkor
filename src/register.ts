@@ -16,7 +16,7 @@ import { runBeforePromptBuild } from "./hooks/before-prompt-build.js";
 import { runAgentEnd } from "./hooks/agent-end.js";
 import { runSessionEnd } from "./hooks/session-end.js";
 import { runNativeIndexer } from "./native-indexer.js";
-import { resolveSessionId } from "./session-map.js";
+import { requireSessionKey } from "./session-map.js";
 
 export interface RegisterContext {
   api: MemoryPluginApi;
@@ -26,7 +26,7 @@ export interface RegisterContext {
 
 export function registerTools(api: MemoryPluginApi, client: GralkorClient): void {
   api.registerTool((ctx) => {
-    const sessionKey = resolveSessionId(ctx?.sessionKey, ctx?.agentId);
+    const rawSessionKey = ctx?.sessionKey;
     return [
       {
         name: "memory_search",
@@ -42,7 +42,7 @@ export function registerTools(api: MemoryPluginApi, client: GralkorClient): void
         execute: async (args: { query: string }) => {
           const r = await runMemorySearch(client, {
             query: args.query,
-            sessionKey,
+            sessionKey: requireSessionKey(rawSessionKey),
           });
           if ("error" in r) throw new Error(JSON.stringify(r.error));
           return r.ok;
@@ -62,7 +62,7 @@ export function registerTools(api: MemoryPluginApi, client: GralkorClient): void
         },
         execute: async (args: { content: string; source_description?: string }) => {
           const r = await runMemoryAdd(client, {
-            sessionKey,
+            sessionKey: requireSessionKey(rawSessionKey),
             content: args.content,
             sourceDescription: args.source_description,
           });
@@ -87,7 +87,9 @@ export function registerTools(api: MemoryPluginApi, client: GralkorClient): void
           "ADMIN — DO NOT CALL unless the user has explicitly asked you to build Gralkor communities. This is an expensive operator-maintenance action; calling it unprompted wastes time. Runs Graphiti community detection over this agent's memory partition.",
         parameters: { type: "object", properties: {} },
         execute: async () => {
-          const r = await runMemoryBuildCommunities(client, { sessionKey });
+          const r = await runMemoryBuildCommunities(client, {
+            sessionKey: requireSessionKey(rawSessionKey),
+          });
           if ("error" in r) throw new Error(JSON.stringify(r.error));
           return `Built ${r.ok.communities} communities across ${r.ok.edges} edges.`;
         },
@@ -107,7 +109,7 @@ export function registerHooks(
     messages?: { role: string; content: unknown }[];
     workspaceDir?: string;
   }) => {
-    const sessionKey = resolveSessionId(event.sessionKey, event.agentId);
+    const sessionKey = requireSessionKey(event.sessionKey);
     const agentId = event.agentId ?? sessionKey;
 
     // Fire-and-forget native indexer — doesn't block the prompt build.
@@ -135,7 +137,7 @@ export function registerHooks(
     agentId?: string;
     messages?: { role: string; content: unknown }[];
   }) => {
-    const sessionKey = resolveSessionId(event.sessionKey, event.agentId);
+    const sessionKey = requireSessionKey(event.sessionKey);
     const result = await runAgentEnd(client, {
       sessionKey,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -149,7 +151,7 @@ export function registerHooks(
     sessionKey?: string;
     agentId?: string;
   }) => {
-    const sessionKey = resolveSessionId(event.sessionKey, event.agentId);
+    const sessionKey = requireSessionKey(event.sessionKey);
     const result = await runSessionEnd(client, { sessionKey });
     if ("error" in result) throw new Error(JSON.stringify(result.error));
   });
