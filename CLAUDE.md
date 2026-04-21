@@ -111,16 +111,24 @@ ctxToTurn
 
 ```
 session-map
-  when setSessionGroup(sessionKey, agentId) is called
-    then sessionKey is mapped to sanitizeGroupId(agentId) in a module-level Map
-  when getSessionGroup(sessionKey) is called and the sessionKey was previously set
-    then the sanitised groupId is returned
-  when getSessionGroup(sessionKey) is called and the sessionKey was never set
-    then null is returned (caller surfaces session_not_registered)
-  session id is required at every boundary — there is no defaulting
-    when a hook or tool receives a missing or blank sessionKey from OpenClaw
-      then it throws synchronously (Gralkor requires a non-blank session_id)
-    there is no "default" bucket; different sessions never share memory
+  setSessionGroup / getSessionGroup
+    when setSessionGroup(sessionKey, agentId) is called
+      then sessionKey is mapped to sanitizeGroupId(agentId) in a module-level Map
+    when setSessionGroup is called twice for the same sessionKey
+      then the second value overwrites the first
+    when getSessionGroup(sessionKey) is called and the sessionKey was previously set
+      then the sanitised groupId is returned
+    when getSessionGroup(sessionKey) is called and the sessionKey was never set
+      then null is returned (caller surfaces session_not_registered)
+  requireSessionKey
+    when requireSessionKey is called with a non-blank string
+      then it returns the string unchanged
+    when requireSessionKey is called with undefined
+      then it throws with "Gralkor requires a non-blank session_id"
+    when requireSessionKey is called with null
+      then it throws with "Gralkor requires a non-blank session_id"
+    when requireSessionKey is called with an empty string
+      then it throws with "Gralkor requires a non-blank session_id"
 ```
 
 ### memory_search tool
