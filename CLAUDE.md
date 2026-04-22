@@ -222,8 +222,10 @@ native-indexer
 ```
 registration-contract
   each hook and tool invokes requireSessionKey(ctx.sessionKey) at its boundary before any work
-    — OpenClaw dispatches hooks as `handler(event, ctx)` and tool factories as `factory(ctx)`;
-      sessionKey is an identity field on ctx, never on the hook event
+    — OpenClaw dispatches hooks as `handler(event, ctx)`, tool factories as `factory(ctx)`,
+      and tool `execute` (via pi-agent-core's AgentTool) as `(toolCallId, params, signal, onUpdate)` —
+      the model-supplied params arrive as the *second* argument; binding them as the first
+      silently coerces them to the toolCallId string and drops every model-supplied field
       (see OPENCLAW_INTEGRATION_2026-04-02.md)
     when before_prompt_build fires with a ctx that has no sessionKey (undefined or blank)
       then the hook throws synchronously before recall, native-index, or session registration
@@ -240,6 +242,16 @@ registration-contract
   memory_build_indices is the one exception — it is a whole-graph admin operation
     when memory_build_indices.execute runs with a tool-registration ctx that has no sessionKey
       then execute proceeds without requireSessionKey (no per-session scope)
+  model-supplied params reach the client through the real dispatch signature
+    — execute is invoked as `(toolCallId, params, signal, onUpdate)`; tests must call
+      `tool.execute("call-id", { ... })` so a wrapper that reads `args.x` from the first
+      positional arg fails loudly instead of silently dropping `x`
+    when memory_search.execute is invoked with a registered sessionKey and {query} as params
+      then GralkorClient.memorySearch is called with that exact query (plus the configured maxResults / maxEntityResults caps)
+    when memory_add.execute is invoked with a registered sessionKey and {content, source_description} as params
+      then GralkorClient.memoryAdd is called with that exact content and source description
+    when memory_add.execute is invoked without source_description
+      then GralkorClient.memoryAdd is called with sourceDescription = null
 ```
 
 ### config

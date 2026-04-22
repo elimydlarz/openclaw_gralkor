@@ -44,7 +44,7 @@ export function registerTools(
           },
           required: ["query"],
         },
-        execute: async (args: { query: string }) => {
+        execute: async (_toolCallId: string, args: { query: string }) => {
           const r = await runMemorySearch(client, {
             query: args.query,
             sessionKey: requireSessionKey(rawSessionKey),
@@ -67,7 +67,10 @@ export function registerTools(
           },
           required: ["content"],
         },
-        execute: async (args: { content: string; source_description?: string }) => {
+        execute: async (
+          _toolCallId: string,
+          args: { content: string; source_description?: string },
+        ) => {
           const r = await runMemoryAdd(client, {
             sessionKey: requireSessionKey(rawSessionKey),
             content: args.content,
