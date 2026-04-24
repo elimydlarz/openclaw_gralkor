@@ -96,17 +96,32 @@ describe("before_prompt_build hook", () => {
       expect(result).toEqual({ ok: {} });
     });
 
-    it("surfaces client errors on recall failure", async () => {
+    it("logs a warning and continues without context on recall failure", async () => {
       client.setResponse("recall", { error: "gralkor_down" });
 
-      const result = await runBeforePromptBuild(client, {
-        sessionKey: "sess-1",
-        agentId: "user-1",
-        messages: userQ,
-        autoRecall: true,
-      });
+      const warnings: unknown[][] = [];
+      const originalWarn = console.warn;
+      console.warn = (...args: unknown[]) => {
+        warnings.push(args);
+      };
 
-      expect(result).toEqual({ error: "gralkor_down" });
+      try {
+        const result = await runBeforePromptBuild(client, {
+          sessionKey: "sess-1",
+          agentId: "user-1",
+          messages: userQ,
+          autoRecall: true,
+        });
+
+        expect(result).toEqual({ ok: {} });
+      } finally {
+        console.warn = originalWarn;
+      }
+
+      expect(warnings.length).toBe(1);
+      const message = String(warnings[0][0] ?? "");
+      expect(message).toContain("[openclaw_gralkor] recall failed");
+      expect(warnings[0][1]).toBe("gralkor_down");
     });
   });
 

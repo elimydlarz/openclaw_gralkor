@@ -47,7 +47,19 @@ export async function runBeforePromptBuild(
     query,
     ctx.maxResults,
   );
-  if ("error" in recalled) return { error: recalled.error };
+  // Recall is best-effort under the retry-ownership doctrine — the
+  // google-genai SDK owns Vertex-upstream retries (see
+  // gralkor/TEST_TREES.md › Retry ownership). If recall fails here,
+  // the SDK has already exhausted its retries; retrying at this layer
+  // would amplify load, and failing the turn would turn a memory
+  // outage into a user-visible outage.
+  if ("error" in recalled) {
+    console.warn(
+      "[openclaw_gralkor] recall failed — continuing turn without memory context:",
+      recalled.error,
+    );
+    return { ok: {} };
+  }
 
   if (recalled.ok === null) return { ok: {} };
   return { ok: { prependContext: recalled.ok } };

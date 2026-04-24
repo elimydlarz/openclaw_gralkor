@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@susu-eng/gralkor-ts':
-        specifier: ^1.0.2
-        version: 1.0.2
+        specifier: ^1.0.4
+        version: 1.0.4
       openclaw:
         specifier: 2026.4.2
         version: 2026.4.2(@napi-rs/canvas@0.1.99)
@@ -1050,8 +1050,8 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
-  '@susu-eng/gralkor-ts@1.0.2':
-    resolution: {integrity: sha512-NLPqUmAjQmCrT50Qag7L6q+KBpDZ5IvNR90XlMVB5+Eky0sf8pV3lgp0UogI1xWVqn5ATVlQqv8KgnmLqI9v8A==}
+  '@susu-eng/gralkor-ts@1.0.4':
+    resolution: {integrity: sha512-5uEm9Wv18FNC6Qh767PK22ov/6LKkrzWSqYpcxRwoy3EyV0n6Mge/hLX3tIT0vrJNItviBBv2FXH47jVyqvt/Q==}
     engines: {node: '>=18'}
 
   '@telegraf/types@7.1.0':
@@ -4100,7 +4100,7 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@susu-eng/gralkor-ts@1.0.2': {}
+  '@susu-eng/gralkor-ts@1.0.4': {}
 
   '@telegraf/types@7.1.0':
     optional: true
