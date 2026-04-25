@@ -38,11 +38,6 @@
             "type": "number",
             "default": 20,
             "description": "Maximum number of facts returned by the memory_search tool"
-          },
-          "maxEntityResults": {
-            "type": "number",
-            "default": 10,
-            "description": "Maximum number of entity summaries returned by the memory_search tool"
           }
         }
       },
@@ -155,5 +150,5 @@
       "label": "Groq API key"
     }
   },
-  "version": "2.0.8"
+  "version": "2.1.0"
 }
