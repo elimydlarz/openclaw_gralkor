@@ -25,7 +25,7 @@ describe("config — resolveConfig", () => {
     const merged = resolveConfig({
       autoCapture: { enabled: false },
       autoRecall: { enabled: true, maxResults: 3 },
-      search: { maxResults: 7, maxEntityResults: 2 },
+      search: { maxResults: 7 },
     });
     expect(merged.autoCapture.enabled).toBe(false);
     expect(merged.autoRecall.maxResults).toBe(3);

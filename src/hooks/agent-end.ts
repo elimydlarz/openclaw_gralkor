@@ -33,7 +33,8 @@ const SESSION_RESET_PROMPT_PREFIX = "A new session was started via /new or /rese
  * In the Python-server-heavy architecture, the server owns the capture
  * buffer — so all this hook does is extract the just-finished turn and
  * POST it to `/capture`. The server appends to its session-keyed buffer
- * and flushes on idle (or on explicit `session_end`).
+ * and flushes on explicit `session_end` (which OpenClaw fires on
+ * idle-rollover or reset) or on lifespan shutdown.
  *
  * Skipped when:
  *   - autoCapture is off,

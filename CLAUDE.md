@@ -1,14 +1,15 @@
 # openclaw_gralkor
 
-OpenClaw plugin that adapts [Gralkor](https://github.com/elimydlarz/gralkor) — a Graphiti + FalkorDB memory server — into the OpenClaw plugin lifecycle. Wires three hooks (auto-recall, auto-capture, session-end), exposes two tools (`memory_search`, `memory_add`), and spawns the Python server under OpenClaw's managed-service lifecycle.
+OpenClaw plugin that adapts [Gralkor](https://github.com/elimydlarz/gralkor) — a Graphiti + FalkorDB memory server — into the OpenClaw plugin lifecycle. Wires three hooks (auto-recall, auto-capture, session-end), exposes two tools (`memory_search`, `memory_add`) — both the auto-recall hook and the `memory_search` tool call the single `GralkorClient.recall` path (no separate slow-search endpoint), and spawns the Python server under OpenClaw's managed-service lifecycle.
 
 ## Mental Model
 
 - **`@susu-eng/gralkor-ts` dep** owns the HTTP client, the Python-subprocess manager, and the boot-readiness helper. This plugin is pure harness glue on top of that adapter.
-- **Server-side ownership.** The Python server owns capture buffering (session-keyed append + idle flush + session_end flush + retries), per-turn behaviour distillation, and recall-result interpretation. None of that exists client-side here. The plugin posts turns; the server does the thinking.
-- **Per-turn capture.** Each `agent_end` invocation is one turn. The plugin extracts `{user_query, assistant_answer, events}` from the OpenClaw context and `POST /capture`s it. Multiple turns for the same session accumulate in the server's capture buffer; the server flushes on idle or on explicit `POST /session_end`.
+- **Server-side ownership.** The Python server owns capture buffering (session-keyed append + explicit session_end flush + lifespan-shutdown flush + retries), per-turn behaviour distillation, and recall-result interpretation. None of that exists client-side here. The plugin posts turns; the server does the thinking. Session lifetime is the harness's responsibility — the server has no idle-flush policy.
+- **Per-turn capture.** Each `agent_end` invocation is one turn. The plugin extracts `{user_query, assistant_answer, events}` from the OpenClaw context and `POST /capture`s it. Multiple turns for the same session accumulate in the server's capture buffer; OpenClaw fires `session_end` on idle-rollover (next message after the freshness window expires) or explicit reset (`/new`, `/reset`), and the `session_end` hook here drives `POST /session_end` to flush.
 - **Harness-specific filtering lives here.** The Gralkor server is harness-agnostic — it stores what it receives. This adapter is the only layer that knows OpenClaw's conventions, so it's responsible for (a) skipping `agent_end` events that come from harness-internal sub-agent runs (e.g. `sessionKey === "temp:slug-generator"`, whose prompt embeds an inline dump of the real conversation) and synthetic turns (session-reset meta-prompt starting with `"A new session was started via /new or /reset"`), and (b) stripping harness scaffolding from real user content (`Conversation info (untrusted metadata):` and `Sender (untrusted metadata):` ```json envelope blocks) before it reaches `user_query`. Filter rules are sourced from OpenClaw (`src/hooks/llm-slug-generator.ts`, `src/auto-reply/reply/session-reset-prompt.ts`) — keep them pinned to those files.
 - **Session identity.** `session_id` is OpenClaw's `sessionKey` — required. Missing/blank sessionKey fails loudly; there is no `"default"` bucket. `group_id` is the sanitised `agentId` — per-agent graph partition; agents never see each other's memory. Mapping lives in a module-level Map so concurrent plugin reloads within one process share it.
+- **Mode-gated register().** OpenClaw calls `register(api)` once per `api.registrationMode` it cares about — `"cli-metadata"` to enumerate CLI commands, `"setup-only"` / `"setup-runtime"` for lifecycle phases, `"full"` for actual activation (see OpenClaw's `src/plugins/loader.ts` and the SDK's `defineChannelPluginEntry` in `src/plugin-sdk/core.ts`). This plugin only does work in `"full"`; every other mode returns immediately. Within `"full"`, a `globalThis[Symbol.for("@susu-eng/openclaw-gralkor:registered")]` flag is the backstop in case `"full"` is delivered more than once.
 - **Recall is best-effort; capture / session_end still fail-fast.** `before_prompt_build` logs a warning and returns `{ ok: {} }` if recall fails — memory-unavailable should not turn into a user-visible turn failure, and the Vertex-upstream retries live at the google-genai SDK (see `gralkor/TEST_TREES.md › Retry ownership`). `agent_end` and `session_end` still surface Gralkor HTTP errors from `gralkor-ts`'s `GralkorHttpClient` so OpenClaw decides — server-unreachable during capture is a distinct failure class that should not be silently swallowed.
 - **Native indexer.** `before_prompt_build` fires a fire-and-forget scan of the workspace (`MEMORY.md` + `memory/*.md`) and calls `memoryAdd` for new content. Marker-based idempotence keeps re-runs cheap.
 
@@ -30,8 +31,6 @@ before_prompt_build
     then GralkorClient.recall is called with (groupId, sessionId, query, autoRecall.maxResults)
     when recall returns { ok: block }
       then block is injected into the prompt as prependContext
-    when recall returns { ok: null }
-      then no context is injected
     if recall returns { error: _ }
       then the hook logs a warning via console.warn naming the error and returns { ok: {} } — the turn continues without memory context under the retry-ownership doctrine (Vertex-upstream retries live at the google-genai SDK; see `gralkor/TEST_TREES.md › Retry ownership`)
   when autoRecall is disabled
@@ -141,15 +140,13 @@ session-map
 ```
 memory_search tool
   when the tool is invoked with a query and a registered sessionKey
-    then GralkorClient.memorySearch(groupId, sessionId, query, search.maxResults, search.maxEntityResults) is called
-      — the configured caps are forwarded so the server returns at most that many facts and entity summaries
-    when the client returns { ok: text }
-      then the tool result is text (server-side interpretation, no client-side LLM)
+    then GralkorClient.recall(groupId, sessionId, query, search.maxResults) is called
+    when the client returns { ok: block }
+      then the tool result is block
     if the client returns { error: _ }
       then the tool surfaces the error
   when the sessionKey is present but not registered in the session map
-    then the tool returns an explicit "session_not_registered" error (before_prompt_build
-      must have fired at least once for this sessionKey)
+    then the tool returns "session_not_registered"
 ```
 
 ### memory_add tool
@@ -247,7 +244,7 @@ registration-contract
       `tool.execute("call-id", { ... })` so a wrapper that reads `args.x` from the first
       positional arg fails loudly instead of silently dropping `x`
     when memory_search.execute is invoked with a registered sessionKey and {query} as params
-      then GralkorClient.memorySearch is called with that exact query (plus the configured maxResults / maxEntityResults caps)
+      then GralkorClient.recall is called with that exact query and the configured search.maxResults cap
     when memory_add.execute is invoked with a registered sessionKey and {content, source_description} as params
       then GralkorClient.memoryAdd is called with that exact content and source description
     when memory_add.execute is invoked without source_description
@@ -290,16 +287,28 @@ plugin-lifecycle
       then kind is "memory"
       then tools lists the four tool names (memory_search, memory_add, memory_build_indices, memory_build_communities)
       then configSchema declares the expected top-level properties (dataDir, workspaceDir, autoCapture, autoRecall, search, test, and the four apiKey fields)
-  when the plugin loads
-    then the Python server manager is started via gralkor-ts (spawns uvicorn on port 4000, polls /health) — gralkor-ts owns the bundled server runtime; this plugin does not ship its own server files
-    then register() fires manager.start() fire-and-forget immediately (self-start) — OpenClaw does not call api.registerService().start for memory-kind plugins, so relying on that alone leaves uvicorn unspawned and every hook fails with "fetch failed"
-    then api.registerService({id: "gralkor-server", start, stop}) is also registered so OpenClaw has a handle for graceful shutdown (stop on SIGTERM)
-    then a module-level Map<sessionKey, groupId> is initialised
-    then the three hooks (before_prompt_build, agent_end, session_end) and four tools (memory_search, memory_add, memory_build_indices, memory_build_communities) are registered with OpenClaw
-  when register() is called with missing dataDir
-    then registerServerService throws synchronously before any service is registered (fail-fast on config misuse)
-  when the plugin is reloaded in-process (OpenClaw reloads plugins multiple times per event)
-    then the module-level Map and the server manager singleton persist across reloads (no duplicate spawn)
+  when register() is called with api.registrationMode set to anything other than "full" (e.g. "cli-metadata", "setup-only", "setup-runtime")
+    then register() returns immediately as a no-op — OpenClaw is enumerating CLI commands or running a non-activation lifecycle phase, not asking us to boot. This plugin exposes no CLI commands, so non-full modes have nothing to register.
+  when register() is called with api.registrationMode === "full" (or absent, for hosts that predate the field) for the first time in the process AND EXTERNAL_GRALKOR_URL is unset
+    then the Python server manager is constructed via gralkor-ts and manager.start() is fired fire-and-forget (self-start) — OpenClaw does not call api.registerService().start for memory-kind plugins, so relying on that alone leaves uvicorn unspawned and every hook fails with "fetch failed"
+    then api.registerService({id: "gralkor-server", start, stop}) is registered so OpenClaw has a handle for graceful shutdown (stop on SIGTERM)
+    then GralkorHttpClient is constructed with baseUrl = GRALKOR_URL (loopback default)
+    then the three hooks (before_prompt_build, agent_end, session_end) are registered with OpenClaw
+    then one tool factory is registered with OpenClaw, exposing four tool definitions: memory_search, memory_add, memory_build_indices, memory_build_communities
+    then a process-wide "registered" flag is set on globalThis (under Symbol.for("@susu-eng/openclaw-gralkor:registered")) as a backstop in case "full" is delivered more than once (e.g. a registry rebuild within one process)
+  when register() is called in "full" mode and the process-wide flag is already set
+    then register() returns immediately as a no-op — no second server manager, no second start(), no second hook/tool/service binding
+    then the hooks, tools, and service bound on the first call remain in force for the process lifetime
+  when register() is called in "full" mode with missing dataDir AND EXTERNAL_GRALKOR_URL is unset
+    then registerServerService throws synchronously before any service is registered (fail-fast on config misuse) — the process-wide flag is NOT set, so a later register() with a fixed config can succeed
+  when register() is called in "full" mode with EXTERNAL_GRALKOR_URL set in the environment
+    then createServerManager is NOT called (no local Python spawn; an externally-managed gralkor server is the source of memory)
+    then GralkorHttpClient is constructed with baseUrl = EXTERNAL_GRALKOR_URL
+    then waitForHealth is fired fire-and-forget against that URL (so the register pipeline is not blocked by remote-readiness)
+    then api.registerService is NOT called (no manager to gracefully stop)
+    then the three hooks (before_prompt_build, agent_end, session_end) are registered with OpenClaw against the remote-pointing client
+    then one tool factory is registered with OpenClaw against the remote-pointing client, exposing four tool definitions: memory_search, memory_add, memory_build_indices, memory_build_communities
+    then dataDir is ignored — it configures only the local-spawn path's venv + falkordblite location, which thin-client mode does not use; whether it is set or unset, present or absent, has no effect
   when the process receives SIGTERM
     then no client-side flush is needed — the Python server's lifespan shutdown handles buffer flushes
 ```

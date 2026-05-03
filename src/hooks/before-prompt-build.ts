@@ -61,7 +61,6 @@ export async function runBeforePromptBuild(
     return { ok: {} };
   }
 
-  if (recalled.ok === null) return { ok: {} };
   return { ok: { prependContext: recalled.ok } };
 }
 

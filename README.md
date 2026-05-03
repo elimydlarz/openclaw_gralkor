@@ -33,7 +33,7 @@ Three hooks + two tools, all fed by the Gralkor HTTP API:
 - **`before_prompt_build`** — registers the session's group, scans workspace memory files for new content (`MEMORY.md`, `memory/*.md`), and auto-recalls relevant facts which get injected into the prompt.
 - **`agent_end`** — posts the just-finished turn to `/capture` as a canonical `[{role, content}]` message list (user → behaviour(s) → assistant). The Gralkor server owns the capture buffer and flushes on idle (default 5 min) or on explicit session-end. OpenClaw-specific filtering happens here: harness-internal sub-agent runs (e.g. `sessionKey === "temp:slug-generator"`) and synthetic turns (the `/new`/`/reset` meta-prompt) are skipped, and `Conversation info` / `Sender` `(untrusted metadata)` envelope blocks are stripped from the user message before capture.
 - **`session_end`** — posts `/session_end` to flush the session's buffer now instead of waiting for the idle window.
-- **`memory_search` tool** — `POST /tools/memory_search`. The server does a slow-mode graph search + LLM interpretation and returns a single text blob.
+- **`memory_search` tool** — calls the same `POST /recall` path as the `before_prompt_build` hook. There is no separate slow-search endpoint: manual and auto lookups do identical server work.
 - **`memory_add` tool** — `POST /tools/memory_add`. Fire-and-forget; the server queues the add for async Graphiti extraction.
 
 Compared to previous versions of this plugin: the client-side debouncer, flush retry loop, SIGTERM handler, transcript distillation, and LLM interpretation are all **gone**. Those behaviours moved server-side — this plugin is now a thin lifecycle harness on top of `@susu-eng/gralkor-ts`.
@@ -53,7 +53,7 @@ Set under `plugins.entries.openclaw-gralkor.config` in `~/.openclaw/openclaw.jso
 - **`autoCapture.enabled`** *(default: true)* — post `/capture` at the end of every agent run.
 - **`autoRecall.enabled`** *(default: true)* — call `/recall` at prompt-build time.
 - **`autoRecall.maxResults`** *(default: 10)* — cap on facts injected.
-- **`search.maxResults` / `search.maxEntityResults`** — cap on `memory_search` results.
+- **`search.maxResults`** — cap on facts returned by the `memory_search` tool.
 - **`llm` / `embedder`** — provider + model override (defaults: Gemini).
 - **`googleApiKey` / `openaiApiKey` / `anthropicApiKey` / `groqApiKey`** — one is required.
 - **`test`** *(default: false)* — verbose server-side logging.

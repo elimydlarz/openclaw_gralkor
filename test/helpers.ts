@@ -44,7 +44,7 @@ export function makeConfig(
     dataDir: "/tmp/fake-gralkor",
     autoCapture: { enabled: true },
     autoRecall: { enabled: true, maxResults: 10 },
-    search: { maxResults: 20, maxEntityResults: 10 },
+    search: { maxResults: 20 },
     test: false,
     ...overrides,
   } as GralkorPluginConfig;

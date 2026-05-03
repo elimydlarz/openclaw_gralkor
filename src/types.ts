@@ -8,8 +8,11 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyFn = (...args: any[]) => any;
 
+export type RegistrationMode = "full" | "setup-only" | "setup-runtime" | "cli-metadata";
+
 export interface MemoryPluginApi {
   pluginConfig?: Record<string, unknown>;
+  registrationMode?: RegistrationMode;
   on(event: string, handler: AnyFn): void;
   registerService(service: {
     id: string;

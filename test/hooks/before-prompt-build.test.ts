@@ -21,7 +21,7 @@ describe("before_prompt_build hook", () => {
 
   describe("session registration", () => {
     it("registers the session's groupId (sanitised agentId)", async () => {
-      client.setResponse("recall", { ok: null });
+      client.setResponse("recall", { ok: "<gralkor-memory>x</gralkor-memory>" });
 
       await runBeforePromptBuild(client, {
         sessionKey: "sess-1",
@@ -36,7 +36,7 @@ describe("before_prompt_build hook", () => {
 
   describe("when autoRecall is enabled and a query exists", () => {
     it("calls recall with sanitised groupId + sessionKey + query", async () => {
-      client.setResponse("recall", { ok: null });
+      client.setResponse("recall", { ok: "<gralkor-memory>x</gralkor-memory>" });
 
       await runBeforePromptBuild(client, {
         sessionKey: "sess-1",
@@ -51,7 +51,7 @@ describe("before_prompt_build hook", () => {
     });
 
     it("forwards maxResults to the client when configured", async () => {
-      client.setResponse("recall", { ok: null });
+      client.setResponse("recall", { ok: "<gralkor-memory>x</gralkor-memory>" });
 
       await runBeforePromptBuild(client, {
         sessionKey: "sess-1",
@@ -81,19 +81,6 @@ describe("before_prompt_build hook", () => {
       expect(result).toEqual({
         ok: { prependContext: "<gralkor-memory>known fact</gralkor-memory>" },
       });
-    });
-
-    it("returns ok with no prependContext when recall returns { ok: null }", async () => {
-      client.setResponse("recall", { ok: null });
-
-      const result = await runBeforePromptBuild(client, {
-        sessionKey: "sess-1",
-        agentId: "user-1",
-        messages: userQ,
-        autoRecall: true,
-      });
-
-      expect(result).toEqual({ ok: {} });
     });
 
     it("logs a warning and continues without context on recall failure", async () => {
@@ -155,7 +142,7 @@ describe("before_prompt_build hook", () => {
     });
 
     it("uses the trailing user message when earlier ones exist", async () => {
-      client.setResponse("recall", { ok: null });
+      client.setResponse("recall", { ok: "<gralkor-memory>x</gralkor-memory>" });
 
       await runBeforePromptBuild(client, {
         sessionKey: "sess-1",

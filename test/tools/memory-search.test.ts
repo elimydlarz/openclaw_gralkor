@@ -11,9 +11,9 @@ describe("memory_search tool", () => {
     resetSessionMap();
   });
 
-  it("calls GralkorClient.memorySearch with registered groupId + sessionKey + query", async () => {
+  it("calls GralkorClient.recall with registered groupId + sessionKey + query", async () => {
     setSessionGroup("sess-1", "user-1");
-    client.setResponse("memorySearch", { ok: "Facts:\n- tea" });
+    client.setResponse("recall", { ok: "Facts:\n- tea" });
 
     const result = await runMemorySearch(client, {
       query: "preferences",
@@ -21,28 +21,25 @@ describe("memory_search tool", () => {
     });
 
     expect(result).toEqual({ ok: "Facts:\n- tea" });
-    expect(client.searches).toEqual([
-      ["user_1", "sess-1", "preferences", undefined, undefined],
-    ]);
+    expect(client.recalls).toEqual([["user_1", "sess-1", "preferences", undefined]]);
   });
 
-  it("forwards maxResults and maxEntityResults to the client when configured", async () => {
+  it("forwards maxResults to the client when configured", async () => {
     setSessionGroup("sess-1", "user-1");
-    client.setResponse("memorySearch", { ok: "ok" });
+    client.setResponse("recall", { ok: "ok" });
 
     await runMemorySearch(client, {
       query: "preferences",
       sessionKey: "sess-1",
       maxResults: 7,
-      maxEntityResults: 3,
     });
 
-    expect(client.searches).toEqual([["user_1", "sess-1", "preferences", 7, 3]]);
+    expect(client.recalls).toEqual([["user_1", "sess-1", "preferences", 7]]);
   });
 
   it("surfaces client errors without falling back", async () => {
     setSessionGroup("sess-1", "user-1");
-    client.setResponse("memorySearch", { error: "boom" });
+    client.setResponse("recall", { error: "boom" });
 
     const result = await runMemorySearch(client, {
       query: "q",
@@ -59,6 +56,6 @@ describe("memory_search tool", () => {
     });
 
     expect(result).toEqual({ error: "session_not_registered" });
-    expect(client.searches).toEqual([]);
+    expect(client.recalls).toEqual([]);
   });
 });

@@ -5,6 +5,7 @@ import {
   GralkorHttpClient,
   GRALKOR_URL,
   validateOntologyConfig,
+  waitForHealth,
 } from "@susu-eng/gralkor-ts";
 import {
   resolveConfig,
@@ -31,8 +32,12 @@ try {
   /* not critical */
 }
 
-let configLogged = false;
-let serverManagerStarted = false;
+const REGISTERED = Symbol.for("@susu-eng/openclaw-gralkor:registered");
+type RegisteredSlot = { [REGISTERED]?: boolean };
+
+export function resetRegistrationForTests(): void {
+  (globalThis as RegisteredSlot)[REGISTERED] = false;
+}
 
 export const id = "openclaw-gralkor";
 export const name = "Gralkor Memory (OpenClaw)";
@@ -79,10 +84,6 @@ export const configSchema = {
           type: "number" as const,
           default: defaultConfig.search.maxResults,
         },
-        maxEntityResults: {
-          type: "number" as const,
-          default: defaultConfig.search.maxEntityResults,
-        },
       },
     },
     dataDir: {
@@ -122,50 +123,67 @@ export const configSchema = {
 };
 
 export function register(api: MemoryPluginApi): void {
+  if (api.registrationMode && api.registrationMode !== "full") return;
+
+  const slot = globalThis as RegisteredSlot;
+  if (slot[REGISTERED]) return;
+
   try {
     const config = resolveConfig(
       (api.pluginConfig ?? {}) as Partial<GralkorPluginConfig>,
     );
     validateOntologyConfig(config.ontology);
 
-    if (!configLogged) {
-      configLogged = true;
-      console.log(`[gralkor] boot: plugin loaded (v${version})`);
-      if (config.test) {
-        console.log(
-          `[gralkor] raw pluginConfig: ${JSON.stringify(api.pluginConfig)}`,
-        );
-      }
-      const llmSummary = config.llm
-        ? `${config.llm.provider}/${config.llm.model}`
-        : "server-default";
-      const embedderSummary = config.embedder
-        ? `${config.embedder.provider}/${config.embedder.model}`
-        : "server-default";
-      const ontologySummary = config.ontology
-        ? `${Object.keys(config.ontology.entities ?? {}).length} entities, ${Object.keys(config.ontology.edges ?? {}).length} edges`
-        : "none";
+    console.log(`[gralkor] boot: plugin loaded (v${version})`);
+    if (config.test) {
       console.log(
-        `[gralkor] config:` +
-          ` llm=${llmSummary}` +
-          ` embedder=${embedderSummary}` +
-          ` ontology=${ontologySummary}` +
-          ` autoCapture=${config.autoCapture.enabled}` +
-          ` autoRecall=${config.autoRecall.enabled} maxResults=${config.autoRecall.maxResults}` +
-          ` test=${config.test}` +
-          ` dataDir=${config.dataDir ?? "default"}`,
+        `[gralkor] raw pluginConfig: ${JSON.stringify(api.pluginConfig)}`,
       );
     }
+    const llmSummary = config.llm
+      ? `${config.llm.provider}/${config.llm.model}`
+      : "server-default";
+    const embedderSummary = config.embedder
+      ? `${config.embedder.provider}/${config.embedder.model}`
+      : "server-default";
+    const ontologySummary = config.ontology
+      ? `${Object.keys(config.ontology.entities ?? {}).length} entities, ${Object.keys(config.ontology.edges ?? {}).length} edges`
+      : "none";
+    console.log(
+      `[gralkor] config:` +
+        ` llm=${llmSummary}` +
+        ` embedder=${embedderSummary}` +
+        ` ontology=${ontologySummary}` +
+        ` autoCapture=${config.autoCapture.enabled}` +
+        ` autoRecall=${config.autoRecall.enabled} maxResults=${config.autoRecall.maxResults}` +
+        ` test=${config.test}` +
+        ` dataDir=${config.dataDir ?? "default"}`,
+    );
 
-    const client = new GralkorHttpClient({ baseUrl: GRALKOR_URL });
+    const externalUrl = process.env.EXTERNAL_GRALKOR_URL;
+    const baseUrl = externalUrl ?? GRALKOR_URL;
+    const client = new GralkorHttpClient({ baseUrl });
 
     registerTools(api, client, config);
     registerHooks(api, client, config);
 
-    if (!serverManagerStarted) {
-      serverManagerStarted = true;
+    if (externalUrl) {
+      console.log(
+        `[gralkor] thin-client mode: pointing at ${externalUrl} (no local server spawn)`,
+      );
+      void waitForHealth(client, { timeoutMs: 120_000, backoffMs: 500 }).catch(
+        (err) => {
+          console.error(
+            "[gralkor] thin-client: waitForHealth failed:",
+            err instanceof Error ? err.message : err,
+          );
+        },
+      );
+    } else {
       registerServerService(api, config, version);
     }
+
+    slot[REGISTERED] = true;
   } catch (err) {
     console.error(
       `[gralkor] boot: register() failed:`,

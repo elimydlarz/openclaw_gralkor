@@ -21,7 +21,7 @@ import {
 export interface GralkorPluginConfig {
   autoCapture: { enabled: boolean };
   autoRecall: { enabled: boolean; maxResults: number };
-  search: { maxResults: number; maxEntityResults: number };
+  search: { maxResults: number };
   llm?: ModelConfig;
   embedder?: ModelConfig;
   ontology?: OntologyConfig;
@@ -37,7 +37,7 @@ export interface GralkorPluginConfig {
 export const defaultConfig: GralkorPluginConfig = {
   autoCapture: { enabled: true },
   autoRecall: { enabled: true, maxResults: 10 },
-  search: { maxResults: 20, maxEntityResults: 10 },
+  search: { maxResults: 20 },
 };
 
 export function resolveConfig(
@@ -54,8 +54,6 @@ export function resolveConfig(
     },
     search: {
       maxResults: raw.search?.maxResults ?? defaultConfig.search.maxResults,
-      maxEntityResults:
-        raw.search?.maxEntityResults ?? defaultConfig.search.maxEntityResults,
     },
     llm: raw.llm,
     embedder: raw.embedder,

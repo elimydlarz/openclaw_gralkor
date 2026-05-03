@@ -108,15 +108,15 @@ describe("registration-contract — model-supplied params reach the client", () 
   ) => Promise<unknown>;
   type RegisteredTool = { name: string; execute: ToolExecute };
 
-  it("memory_search forwards args.query (second positional arg) to GralkorClient.memorySearch", async () => {
-    client.setResponse("memorySearch", { ok: "Facts:\n- tea" });
+  it("memory_search forwards args.query (second positional arg) to GralkorClient.recall", async () => {
+    client.setResponse("recall", { ok: "Facts:\n- tea" });
     const factory = api.toolFactories[0];
     const tools = factory({ sessionKey: "sess-1", agentId: "user-1" }) as RegisteredTool[];
     const tool = tools.find((t) => t.name === "memory_search")!;
 
     await tool.execute("call-1", { query: "preferences" });
 
-    expect(client.searches).toEqual([["user_1", "sess-1", "preferences", 20, 10]]);
+    expect(client.recalls).toEqual([["user_1", "sess-1", "preferences", 20]]);
   });
 
   it("memory_add forwards args.content + args.source_description to GralkorClient.memoryAdd", async () => {

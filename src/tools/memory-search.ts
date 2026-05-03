@@ -6,19 +6,17 @@ export interface MemorySearchArgs {
   sessionKey: string;
   /** Max facts to interpret. Forwarded as max_results. Omit to use the server default. */
   maxResults?: number;
-  /** Max entity summaries to interpret. Forwarded as max_entity_results. Omit to use the server default. */
-  maxEntityResults?: number;
 }
 
 /**
- * The `memory_search` ReAct tool. Thin wrapper around
- * `GralkorClient.memorySearch` — server does the interpretation, so the
- * tool result is the server's `text` field verbatim.
+ * The `memory_search` ReAct tool. Calls `GralkorClient.recall` — the
+ * same path the `before_prompt_build` hook uses for auto-recall. There
+ * is no separate manual-search endpoint.
  *
- * Fail-fast on unregistered sessions: the session map must have been
- * populated by `before_prompt_build` before any tool fires. If it hasn't,
- * we surface `session_not_registered` rather than silently routing to
- * the `"default"` group (which would mix memories across agents).
+ * Returns the recalled memory block (the server always wraps a block;
+ * "no facts" and "no relevant facts" both collapse to a
+ * `"No relevant memories found."` body inside the same envelope), and
+ * surfaces session-map / client errors otherwise.
  */
 export async function runMemorySearch(
   client: GralkorClient,
@@ -27,11 +25,5 @@ export async function runMemorySearch(
   const groupId = getSessionGroup(args.sessionKey);
   if (groupId === null) return { error: "session_not_registered" };
 
-  return client.memorySearch(
-    groupId,
-    args.sessionKey,
-    args.query,
-    args.maxResults,
-    args.maxEntityResults,
-  );
+  return client.recall(groupId, args.sessionKey, args.query, args.maxResults);
 }

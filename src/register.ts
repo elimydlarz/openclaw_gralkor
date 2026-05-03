@@ -49,7 +49,6 @@ export function registerTools(
             query: args.query,
             sessionKey: requireSessionKey(rawSessionKey),
             maxResults: config.search.maxResults,
-            maxEntityResults: config.search.maxEntityResults,
           });
           if ("error" in r) throw new Error(JSON.stringify(r.error));
           return r.ok;
