@@ -1,5 +1,5 @@
 {
-  "id": "openclaw-gralkor",
+  "id": "@susulabs/gralkor",
   "kind": "memory",
   "name": "Gralkor Memory (OpenClaw)",
   "description": "Persistent, temporally-aware memory via Graphiti knowledge graphs and FalkorDB",
@@ -13,31 +13,6 @@
         "type": "string",
         "minLength": 1,
         "description": "Display name for this agent. Used to label its turns in stored and recalled memory."
-      },
-      "autoCapture": {
-        "type": "object",
-        "properties": {
-          "enabled": {
-            "type": "boolean",
-            "default": true,
-            "description": "Automatically capture conversations into the graph"
-          }
-        }
-      },
-      "autoRecall": {
-        "type": "object",
-        "properties": {
-          "enabled": {
-            "type": "boolean",
-            "default": true,
-            "description": "Automatically recall relevant context before agent runs"
-          },
-          "maxResults": {
-            "type": "number",
-            "default": 10,
-            "description": "Maximum number of facts to inject as context"
-          }
-        }
       },
       "search": {
         "type": "object",
@@ -121,15 +96,6 @@
     "memory_build_communities"
   ],
   "uiHints": {
-    "autoCapture.enabled": {
-      "label": "Auto-capture conversations"
-    },
-    "autoRecall.enabled": {
-      "label": "Auto-recall context"
-    },
-    "autoRecall.maxResults": {
-      "label": "Max auto-recall results"
-    },
     "llm.provider": {
       "label": "LLM provider"
     },
@@ -158,5 +124,5 @@
       "label": "Groq API key"
     }
   },
-  "version": "2.1.3"
+  "version": "2.1.4"
 }
