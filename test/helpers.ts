@@ -41,6 +41,7 @@ export function makeConfig(
   overrides: Partial<GralkorPluginConfig> = {},
 ): GralkorPluginConfig {
   return {
+    agentName: "TestAgent",
     dataDir: "/tmp/fake-gralkor",
     autoCapture: { enabled: true },
     autoRecall: { enabled: true, maxResults: 10 },

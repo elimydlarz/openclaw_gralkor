@@ -4,6 +4,7 @@ import { getSessionGroup } from "../session-map.js";
 
 export interface AgentEndCtx {
   sessionKey: string;
+  agentName: string;
   messages: MessageEntry[];
   autoCapture: boolean;
 }
@@ -62,5 +63,5 @@ export async function runAgentEnd(
   const groupId = getSessionGroup(ctx.sessionKey);
   if (groupId === null) return { error: "session_not_registered" };
 
-  return client.capture(ctx.sessionKey, groupId, messages);
+  return client.capture(ctx.sessionKey, groupId, ctx.agentName, messages);
 }

@@ -116,7 +116,7 @@ describe("registration-contract — model-supplied params reach the client", () 
 
     await tool.execute("call-1", { query: "preferences" });
 
-    expect(client.recalls).toEqual([["user_1", "sess-1", "preferences", 20]]);
+    expect(client.recalls).toEqual([["user_1", "sess-1", "preferences", "TestAgent", 20]]);
   });
 
   it("memory_add forwards args.content + args.source_description to GralkorClient.memoryAdd", async () => {

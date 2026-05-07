@@ -19,6 +19,7 @@ import {
 } from "@susu-eng/gralkor-ts";
 
 export interface GralkorPluginConfig {
+  agentName: string;
   autoCapture: { enabled: boolean };
   autoRecall: { enabled: boolean; maxResults: number };
   search: { maxResults: number };
@@ -34,16 +35,26 @@ export interface GralkorPluginConfig {
   groqApiKey?: string;
 }
 
-export const defaultConfig: GralkorPluginConfig = {
+/** Defaults for the optional knobs. agentName is required and has no default. */
+export const defaultConfig = {
   autoCapture: { enabled: true },
   autoRecall: { enabled: true, maxResults: 10 },
   search: { maxResults: 20 },
-};
+} as const;
 
 export function resolveConfig(
   raw: Partial<GralkorPluginConfig> = {},
 ): GralkorPluginConfig {
+  const agentName = raw.agentName;
+  if (typeof agentName !== "string" || agentName.trim() === "") {
+    throw new Error(
+      "openclaw-gralkor pluginConfig.agentName is required (non-blank string); got " +
+        JSON.stringify(agentName),
+    );
+  }
+
   return {
+    agentName,
     autoCapture: {
       enabled: raw.autoCapture?.enabled ?? defaultConfig.autoCapture.enabled,
     },

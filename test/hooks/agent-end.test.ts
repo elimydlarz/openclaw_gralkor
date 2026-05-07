@@ -23,15 +23,17 @@ describe("agent_end hook", () => {
 
     const result = await runAgentEnd(client, {
       sessionKey: "sess-1",
+      agentName: "TestAgent",
       messages: okMessages,
       autoCapture: true,
     });
 
     expect(result).toEqual({ ok: true });
     expect(client.captures).toHaveLength(1);
-    const [sessionId, groupId, messages] = client.captures[0];
+    const [sessionId, groupId, agentName, messages] = client.captures[0];
     expect(sessionId).toBe("sess-1");
     expect(groupId).toBe("user_1");
+    expect(agentName).toBe("TestAgent");
     expect(messages).toEqual([
       { role: "user", content: "hello" },
       { role: "assistant", content: "hi" },
@@ -44,6 +46,7 @@ describe("agent_end hook", () => {
 
     await runAgentEnd(client, {
       sessionKey: "sess-1",
+      agentName: "TestAgent",
       messages: [
         { role: "user", content: "what's the weather?" },
         { role: "assistant", content: [{ type: "thinking", thinking: "let me check" }] },
@@ -54,7 +57,7 @@ describe("agent_end hook", () => {
       autoCapture: true,
     });
 
-    const [, , messages] = client.captures[0];
+    const [, , , messages] = client.captures[0];
     expect(messages).toEqual([
       { role: "user", content: "what's the weather?" },
       { role: "behaviour", content: "thought: let me check" },
@@ -69,6 +72,7 @@ describe("agent_end hook", () => {
 
     const result = await runAgentEnd(client, {
       sessionKey: "sess-1",
+      agentName: "TestAgent",
       messages: okMessages,
       autoCapture: false,
     });
@@ -82,6 +86,7 @@ describe("agent_end hook", () => {
 
     const result = await runAgentEnd(client, {
       sessionKey: "sess-1",
+      agentName: "TestAgent",
       messages: [],
       autoCapture: true,
     });
@@ -95,6 +100,7 @@ describe("agent_end hook", () => {
 
     const result = await runAgentEnd(client, {
       sessionKey: "sess-1",
+      agentName: "TestAgent",
       messages: [{ role: "user", content: "unanswered" }],
       autoCapture: true,
     });
@@ -109,6 +115,7 @@ describe("agent_end hook", () => {
 
     const result = await runAgentEnd(client, {
       sessionKey: "sess-1",
+      agentName: "TestAgent",
       messages: okMessages,
       autoCapture: true,
     });
@@ -121,6 +128,7 @@ describe("agent_end hook", () => {
 
     const result = await runAgentEnd(client, {
       sessionKey: "unregistered",
+      agentName: "TestAgent",
       messages: okMessages,
       autoCapture: true,
     });
@@ -134,6 +142,7 @@ describe("agent_end hook", () => {
 
     const result = await runAgentEnd(client, {
       sessionKey: "temp:slug-generator",
+      agentName: "TestAgent",
       messages: [
         {
           role: "user",
@@ -154,6 +163,7 @@ describe("agent_end hook", () => {
 
     const result = await runAgentEnd(client, {
       sessionKey: "sess-1",
+      agentName: "TestAgent",
       messages: [
         {
           role: "user",

@@ -5,6 +5,7 @@ import { setSessionGroup } from "../session-map.js";
 export interface BeforePromptBuildCtx {
   sessionKey: string;
   agentId: string;
+  agentName: string;
   messages: MessageEntry[];
   autoRecall: boolean;
   /** Max facts to interpret. Forwarded to /recall as max_results. Omit to use the server default. */
@@ -45,6 +46,7 @@ export async function runBeforePromptBuild(
     sanitizeGroupId(ctx.agentId),
     ctx.sessionKey,
     query,
+    ctx.agentName,
     ctx.maxResults,
   );
   // Recall is best-effort under the retry-ownership doctrine — the

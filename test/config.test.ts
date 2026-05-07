@@ -2,18 +2,31 @@ import { describe, it, expect } from "vitest";
 import { resolveConfig, defaultConfig, buildSecretEnv } from "../src/config.js";
 
 describe("config — resolveConfig", () => {
-  it("returns the default config when given an empty object", () => {
-    expect(resolveConfig({})).toMatchObject(defaultConfig);
+  it("throws when agentName is missing or blank", () => {
+    expect(() => resolveConfig({ agentName: undefined as unknown as string })).toThrow();
+    expect(() => resolveConfig({ agentName: "" })).toThrow();
+    expect(() => resolveConfig({ agentName: "   " })).toThrow();
+  });
+
+  it("throws when given an empty object (agentName required)", () => {
+    expect(() => resolveConfig({})).toThrow();
+  });
+
+  it("includes agentName verbatim and other unspecified fields equal defaultConfig", () => {
+    const resolved = resolveConfig({ agentName: "TestAgent" });
+    expect(resolved.agentName).toBe("TestAgent");
+    expect(resolved).toMatchObject(defaultConfig);
   });
 
   it("leaves llm and embedder undefined by default so the Python server applies its own defaults", () => {
-    const resolved = resolveConfig({});
+    const resolved = resolveConfig({ agentName: "TestAgent" });
     expect(resolved.llm).toBeUndefined();
     expect(resolved.embedder).toBeUndefined();
   });
 
   it("passes through llm and embedder ModelConfig values when provided", () => {
     const resolved = resolveConfig({
+      agentName: "TestAgent",
       llm: { provider: "anthropic", model: "claude-opus-4" },
       embedder: { provider: "openai", model: "text-embedding-3-small" },
     });
@@ -23,6 +36,7 @@ describe("config — resolveConfig", () => {
 
   it("overrides only the fields provided and keeps defaults elsewhere", () => {
     const merged = resolveConfig({
+      agentName: "TestAgent",
       autoCapture: { enabled: false },
       autoRecall: { enabled: true, maxResults: 3 },
       search: { maxResults: 7 },
@@ -35,6 +49,7 @@ describe("config — resolveConfig", () => {
 
   it("passes api-key fields through unchanged (trimming happens later in buildSecretEnv)", () => {
     const merged = resolveConfig({
+      agentName: "TestAgent",
       googleApiKey: "  google-key  ",
       openaiApiKey: "openai-key",
     });
@@ -47,12 +62,13 @@ describe("config — resolveConfig", () => {
 
 describe("config — buildSecretEnv", () => {
   it("returns an empty object when no api keys are set", () => {
-    expect(buildSecretEnv(resolveConfig({}))).toEqual({});
+    expect(buildSecretEnv(resolveConfig({ agentName: "TestAgent" }))).toEqual({});
   });
 
   it("maps each provider key to its uppercase env var name", () => {
     const env = buildSecretEnv(
       resolveConfig({
+        agentName: "TestAgent",
         googleApiKey: "g",
         openaiApiKey: "o",
         anthropicApiKey: "a",
@@ -69,13 +85,13 @@ describe("config — buildSecretEnv", () => {
 
   it("trims surrounding whitespace on each api-key value", () => {
     const env = buildSecretEnv(
-      resolveConfig({ googleApiKey: "  padded-key  \n" }),
+      resolveConfig({ agentName: "TestAgent", googleApiKey: "  padded-key  \n" }),
     );
     expect(env.GOOGLE_API_KEY).toBe("padded-key");
   });
 
   it("includes only the keys that are set (no empty values)", () => {
-    const env = buildSecretEnv(resolveConfig({ openaiApiKey: "solo" }));
+    const env = buildSecretEnv(resolveConfig({ agentName: "TestAgent", openaiApiKey: "solo" }));
     expect(env).toEqual({ OPENAI_API_KEY: "solo" });
   });
 });

@@ -28,7 +28,7 @@ before_prompt_build
     then the session's groupId is registered in the session map (sanitised from agentId)
     then the native indexer is fired fire-and-forget (scans workspace/MEMORY.md + workspace/memory/*.md)
   when autoRecall is enabled and a user query can be extracted from the trailing messages
-    then GralkorClient.recall is called with (groupId, sessionId, query, autoRecall.maxResults)
+    then GralkorClient.recall is called with (groupId, sessionId, query, autoRecall.maxResults, pluginConfig.agentName)
     when recall returns { ok: block }
       then block is injected into the prompt as prependContext
     if recall returns { error: _ }
@@ -48,7 +48,7 @@ agent_end
   when autoCapture is enabled and messages are present
     then ctx is converted via ctxToMessages to a canonical [%{role, content}] sequence
       ordered user → behaviour(s) → assistant
-    then GralkorClient.capture(sessionId, groupId, messages) is called with that sequence
+    then GralkorClient.capture(sessionId, groupId, pluginConfig.agentName, messages) is called with that sequence
     when capture returns { ok: true }
       then the hook completes silently (server owns buffering + flush)
     if capture returns { error: _ }
@@ -256,11 +256,16 @@ registration-contract
 ```
 config
   resolveConfig
+    when resolveConfig is called without an agentName (or with a blank one)
+      then it throws — every consumer must supply the agent's name; there is no fallback to "Assistant"
     when resolveConfig is called with an empty object
-      then the result equals defaultConfig — autoCapture/autoRecall/search defaults are applied
+      then it throws (agentName is required; same fail-fast as above)
+    when resolveConfig is called with a non-blank agentName
+      then the result includes agentName verbatim
+        and other unspecified fields equal defaultConfig — autoCapture/autoRecall/search defaults are applied
         and llm / embedder are left undefined so the Python server applies its own defaults
         (single source of truth — the plugin never duplicates server-side provider/model defaults)
-    when resolveConfig is called with partial overrides
+    when resolveConfig is called with partial overrides (with a non-blank agentName)
       then provided fields override defaults and unspecified fields keep their defaults
     when resolveConfig is called with an llm or embedder ModelConfig
       then it is passed through unchanged for `createServerManager` to write into config.yaml

@@ -48,6 +48,7 @@ export function registerTools(
           const r = await runMemorySearch(client, {
             query: args.query,
             sessionKey: requireSessionKey(rawSessionKey),
+            agentName: config.agentName,
             maxResults: config.search.maxResults,
           });
           if ("error" in r) throw new Error(JSON.stringify(r.error));
@@ -146,6 +147,7 @@ export function registerHooks(
       const result = await runBeforePromptBuild(client, {
         sessionKey,
         agentId,
+        agentName: config.agentName,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         messages: (event.messages ?? []) as any,
         autoRecall: config.autoRecall.enabled,
@@ -165,6 +167,7 @@ export function registerHooks(
       const sessionKey = requireSessionKey(ctx.sessionKey);
       const result = await runAgentEnd(client, {
         sessionKey,
+        agentName: config.agentName,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         messages: (event.messages ?? []) as any,
         autoCapture: config.autoCapture.enabled,

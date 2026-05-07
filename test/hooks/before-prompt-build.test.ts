@@ -26,6 +26,7 @@ describe("before_prompt_build hook", () => {
       await runBeforePromptBuild(client, {
         sessionKey: "sess-1",
         agentId: "user-with-hyphens",
+        agentName: "TestAgent",
         messages: userQ,
         autoRecall: true,
       });
@@ -41,12 +42,13 @@ describe("before_prompt_build hook", () => {
       await runBeforePromptBuild(client, {
         sessionKey: "sess-1",
         agentId: "user-1",
+        agentName: "TestAgent",
         messages: userQ,
         autoRecall: true,
       });
 
       expect(client.recalls).toEqual([
-        ["user_1", "sess-1", "what do you know about me?", undefined],
+        ["user_1", "sess-1", "what do you know about me?", "TestAgent", undefined],
       ]);
     });
 
@@ -56,13 +58,14 @@ describe("before_prompt_build hook", () => {
       await runBeforePromptBuild(client, {
         sessionKey: "sess-1",
         agentId: "user-1",
+        agentName: "TestAgent",
         messages: userQ,
         autoRecall: true,
         maxResults: 5,
       });
 
       expect(client.recalls).toEqual([
-        ["user_1", "sess-1", "what do you know about me?", 5],
+        ["user_1", "sess-1", "what do you know about me?", "TestAgent", 5],
       ]);
     });
 
@@ -74,6 +77,7 @@ describe("before_prompt_build hook", () => {
       const result = await runBeforePromptBuild(client, {
         sessionKey: "sess-1",
         agentId: "user-1",
+        agentName: "TestAgent",
         messages: userQ,
         autoRecall: true,
       });
@@ -96,6 +100,7 @@ describe("before_prompt_build hook", () => {
         const result = await runBeforePromptBuild(client, {
           sessionKey: "sess-1",
           agentId: "user-1",
+          agentName: "TestAgent",
           messages: userQ,
           autoRecall: true,
         });
@@ -117,6 +122,7 @@ describe("before_prompt_build hook", () => {
       const result = await runBeforePromptBuild(client, {
         sessionKey: "sess-1",
         agentId: "user-1",
+        agentName: "TestAgent",
         messages: userQ,
         autoRecall: false,
       });
@@ -132,6 +138,7 @@ describe("before_prompt_build hook", () => {
       const result = await runBeforePromptBuild(client, {
         sessionKey: "sess-1",
         agentId: "user-1",
+        agentName: "TestAgent",
         messages: [], // no user message
         autoRecall: true,
       });
@@ -147,6 +154,7 @@ describe("before_prompt_build hook", () => {
       await runBeforePromptBuild(client, {
         sessionKey: "sess-1",
         agentId: "user-1",
+        agentName: "TestAgent",
         messages: [
           { role: "user", content: "first" },
           { role: "assistant", content: [{ type: "text", text: "ok" }] },

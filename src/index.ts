@@ -54,7 +54,12 @@ export const tools = [
 
 export const configSchema = {
   type: "object" as const,
+  required: ["agentName"] as const,
   properties: {
+    agentName: {
+      type: "string" as const,
+      minLength: 1,
+    },
     autoCapture: {
       type: "object" as const,
       properties: {

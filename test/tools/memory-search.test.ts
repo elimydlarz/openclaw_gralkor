@@ -18,10 +18,11 @@ describe("memory_search tool", () => {
     const result = await runMemorySearch(client, {
       query: "preferences",
       sessionKey: "sess-1",
+      agentName: "TestAgent",
     });
 
     expect(result).toEqual({ ok: "Facts:\n- tea" });
-    expect(client.recalls).toEqual([["user_1", "sess-1", "preferences", undefined]]);
+    expect(client.recalls).toEqual([["user_1", "sess-1", "preferences", "TestAgent", undefined]]);
   });
 
   it("forwards maxResults to the client when configured", async () => {
@@ -31,10 +32,11 @@ describe("memory_search tool", () => {
     await runMemorySearch(client, {
       query: "preferences",
       sessionKey: "sess-1",
+      agentName: "TestAgent",
       maxResults: 7,
     });
 
-    expect(client.recalls).toEqual([["user_1", "sess-1", "preferences", 7]]);
+    expect(client.recalls).toEqual([["user_1", "sess-1", "preferences", "TestAgent", 7]]);
   });
 
   it("surfaces client errors without falling back", async () => {
@@ -44,6 +46,7 @@ describe("memory_search tool", () => {
     const result = await runMemorySearch(client, {
       query: "q",
       sessionKey: "sess-1",
+      agentName: "TestAgent",
     });
 
     expect(result).toEqual({ error: "boom" });
@@ -53,6 +56,7 @@ describe("memory_search tool", () => {
     const result = await runMemorySearch(client, {
       query: "q",
       sessionKey: "unregistered",
+      agentName: "TestAgent",
     });
 
     expect(result).toEqual({ error: "session_not_registered" });

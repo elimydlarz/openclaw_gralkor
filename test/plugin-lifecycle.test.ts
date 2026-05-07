@@ -170,6 +170,7 @@ describe("register() idempotence (plugin-lifecycle tree)", () => {
   function apiWithConfig(): TestApi {
     const api = makeApi();
     (api as unknown as { pluginConfig: unknown }).pluginConfig = {
+      agentName: "TestAgent",
       dataDir: "/tmp/fake-gralkor",
     };
     return api;
@@ -233,7 +234,9 @@ describe("register() idempotence (plugin-lifecycle tree)", () => {
 
   it("a failed first call (missing dataDir) leaves the flag unset so a later valid call still registers", async () => {
     const broken = makeApi();
-    (broken as unknown as { pluginConfig: unknown }).pluginConfig = {};
+    (broken as unknown as { pluginConfig: unknown }).pluginConfig = {
+      agentName: "TestAgent",
+    };
 
     expect(() => manifest.register(broken)).toThrow(/dataDir is required/);
     expect(gralkorTsMocks.createServerManager).not.toHaveBeenCalled();
@@ -267,7 +270,9 @@ describe("register() with EXTERNAL_GRALKOR_URL set (plugin-lifecycle tree — th
 
   it("createServerManager is NOT called; api.registerService is NOT called; GralkorHttpClient points at EXTERNAL_GRALKOR_URL; waitForHealth polls the remote URL; three hooks and one tool factory are registered", async () => {
     const api = makeApi();
-    (api as unknown as { pluginConfig: unknown }).pluginConfig = {};
+    (api as unknown as { pluginConfig: unknown }).pluginConfig = {
+      agentName: "TestAgent",
+    };
 
     manifest.register(api);
     await Promise.resolve();
@@ -285,7 +290,9 @@ describe("register() with EXTERNAL_GRALKOR_URL set (plugin-lifecycle tree — th
 
   it("dataDir is ignored — neither required nor consulted; whether set or unset, behaviour is identical", async () => {
     const apiWithoutDataDir = makeApi();
-    (apiWithoutDataDir as unknown as { pluginConfig: unknown }).pluginConfig = {};
+    (apiWithoutDataDir as unknown as { pluginConfig: unknown }).pluginConfig = {
+      agentName: "TestAgent",
+    };
     expect(() => manifest.register(apiWithoutDataDir)).not.toThrow();
     expect(apiWithoutDataDir.handlers.size).toBe(3);
     expect(apiWithoutDataDir.registered).toHaveLength(0);
@@ -294,6 +301,7 @@ describe("register() with EXTERNAL_GRALKOR_URL set (plugin-lifecycle tree — th
 
     const apiWithDataDir = makeApi();
     (apiWithDataDir as unknown as { pluginConfig: unknown }).pluginConfig = {
+      agentName: "TestAgent",
       dataDir: "/tmp/should-be-ignored",
     };
     expect(() => manifest.register(apiWithDataDir)).not.toThrow();
