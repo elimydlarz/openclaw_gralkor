@@ -1,4 +1,4 @@
-import type { GralkorClient, Result } from "@susu-eng/gralkor-ts";
+import type { GralkorClient, Result } from "@susulabs/gralkor-ts";
 import { ctxToMessages, type MessageEntry } from "../ctx-to-messages.js";
 import { getSessionGroup } from "../session-map.js";
 
@@ -6,7 +6,6 @@ export interface AgentEndCtx {
   sessionKey: string;
   agentName: string;
   messages: MessageEntry[];
-  autoCapture: boolean;
 }
 
 /**
@@ -38,7 +37,6 @@ const SESSION_RESET_PROMPT_PREFIX = "A new session was started via /new or /rese
  * idle-rollover or reset) or on lifespan shutdown.
  *
  * Skipped when:
- *   - autoCapture is off,
  *   - ctx has no messages,
  *   - ctx doesn't contain both a user message and a final assistant
  *     message (nothing coherent to capture).
@@ -47,7 +45,6 @@ export async function runAgentEnd(
   client: GralkorClient,
   ctx: AgentEndCtx,
 ): Promise<Result<true>> {
-  if (!ctx.autoCapture) return { ok: true };
   if (ctx.messages.length === 0) return { ok: true };
 
   if (ctx.sessionKey === SLUG_GENERATOR_SESSION_KEY) return { ok: true };

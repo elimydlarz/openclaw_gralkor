@@ -1,4 +1,4 @@
-import type { GralkorClient, Result } from "@susu-eng/gralkor-ts";
+import type { GralkorClient, Result } from "@susulabs/gralkor-ts";
 import { getSessionGroup } from "../session-map.js";
 
 export interface MemoryBuildCommunitiesArgs {

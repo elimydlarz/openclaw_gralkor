@@ -1,4 +1,4 @@
-import type { Message } from "@susu-eng/gralkor-ts";
+import type { Message } from "@susulabs/gralkor-ts";
 
 interface ContentBlock {
   type: string;

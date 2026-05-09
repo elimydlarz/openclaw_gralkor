@@ -4,18 +4,18 @@ OpenClaw plugin that adapts [Gralkor](https://github.com/elimydlarz/gralkor) —
 
 ## Mental Model
 
-- **`@susu-eng/gralkor-ts` dep** owns the HTTP client, the Python-subprocess manager, and the boot-readiness helper. This plugin is pure harness glue on top of that adapter.
+- **`@susulabs/gralkor` dep** owns the HTTP client, the Python-subprocess manager, and the boot-readiness helper. This plugin is pure harness glue on top of that adapter.
 - **Server-side ownership.** The Python server owns capture buffering (session-keyed append + explicit session_end flush + lifespan-shutdown flush + retries), per-turn behaviour distillation, and recall-result interpretation. None of that exists client-side here. The plugin posts turns; the server does the thinking. Session lifetime is the harness's responsibility — the server has no idle-flush policy.
 - **Per-turn capture.** Each `agent_end` invocation is one turn. The plugin extracts `{user_query, assistant_answer, events}` from the OpenClaw context and `POST /capture`s it. Multiple turns for the same session accumulate in the server's capture buffer; OpenClaw fires `session_end` on idle-rollover (next message after the freshness window expires) or explicit reset (`/new`, `/reset`), and the `session_end` hook here drives `POST /session_end` to flush.
 - **Harness-specific filtering lives here.** The Gralkor server is harness-agnostic — it stores what it receives. This adapter is the only layer that knows OpenClaw's conventions, so it's responsible for (a) skipping `agent_end` events that come from harness-internal sub-agent runs (e.g. `sessionKey === "temp:slug-generator"`, whose prompt embeds an inline dump of the real conversation) and synthetic turns (session-reset meta-prompt starting with `"A new session was started via /new or /reset"`), and (b) stripping harness scaffolding from real user content (`Conversation info (untrusted metadata):` and `Sender (untrusted metadata):` ```json envelope blocks) before it reaches `user_query`. Filter rules are sourced from OpenClaw (`src/hooks/llm-slug-generator.ts`, `src/auto-reply/reply/session-reset-prompt.ts`) — keep them pinned to those files.
 - **Session identity.** `session_id` is OpenClaw's `sessionKey` — required. Missing/blank sessionKey fails loudly; there is no `"default"` bucket. `group_id` is the sanitised `agentId` — per-agent graph partition; agents never see each other's memory. Mapping lives in a module-level Map so concurrent plugin reloads within one process share it.
-- **Mode-gated register().** OpenClaw calls `register(api)` once per `api.registrationMode` it cares about — `"cli-metadata"` to enumerate CLI commands, `"setup-only"` / `"setup-runtime"` for lifecycle phases, `"full"` for actual activation (see OpenClaw's `src/plugins/loader.ts` and the SDK's `defineChannelPluginEntry` in `src/plugin-sdk/core.ts`). This plugin only does work in `"full"`; every other mode returns immediately. Within `"full"`, a `globalThis[Symbol.for("@susu-eng/openclaw-gralkor:registered")]` flag is the backstop in case `"full"` is delivered more than once.
+- **Mode-gated register().** OpenClaw calls `register(api)` once per `api.registrationMode` it cares about — `"cli-metadata"` to enumerate CLI commands, `"setup-only"` / `"setup-runtime"` for lifecycle phases, `"full"` for actual activation (see OpenClaw's `src/plugins/loader.ts` and the SDK's `defineChannelPluginEntry` in `src/plugin-sdk/core.ts`). This plugin only does work in `"full"`; every other mode returns immediately. Within `"full"`, a `globalThis[Symbol.for("@susulabs/gralkor:registered")]` flag is the backstop in case `"full"` is delivered more than once.
 - **Recall is best-effort; capture / session_end still fail-fast.** `before_prompt_build` logs a warning and returns `{ ok: {} }` if recall fails — memory-unavailable should not turn into a user-visible turn failure, and the Vertex-upstream retries live at the google-genai SDK (see `gralkor/TEST_TREES.md › Retry ownership`). `agent_end` and `session_end` still surface Gralkor HTTP errors from `gralkor-ts`'s `GralkorHttpClient` so OpenClaw decides — server-unreachable during capture is a distinct failure class that should not be silently swallowed.
 - **Native indexer.** `before_prompt_build` fires a fire-and-forget scan of the workspace (`MEMORY.md` + `memory/*.md`) and calls `memoryAdd` for new content. Marker-based idempotence keeps re-runs cheap.
 
 ## Dependencies
 
-- **`@susu-eng/gralkor-ts`** — the adapter. Provides `GralkorHttpClient`, `GralkorInMemoryClient` (tests), `waitForHealth`, `createServerManager`, `sanitizeGroupId`.
+- **`@susulabs/gralkor`** — the adapter. Provides `GralkorHttpClient`, `GralkorInMemoryClient` (tests), `waitForHealth`, `createServerManager`, `sanitizeGroupId`.
 - **`openclaw`** — the host plugin API. Peer dep.
 
 ## Test Trees
@@ -27,14 +27,12 @@ before_prompt_build
   when the hook fires with a sessionKey
     then the session's groupId is registered in the session map (sanitised from agentId)
     then the native indexer is fired fire-and-forget (scans workspace/MEMORY.md + workspace/memory/*.md)
-  when autoRecall is enabled and a user query can be extracted from the trailing messages
-    then GralkorClient.recall is called with (groupId, sessionId, query, autoRecall.maxResults, pluginConfig.agentName)
+  when a user query can be extracted from the trailing messages
+    then GralkorClient.recall is called with (groupId, sessionId, query, pluginConfig.agentName)
     when recall returns { ok: block }
       then block is injected into the prompt as prependContext
     if recall returns { error: _ }
       then the hook logs a warning via console.warn naming the error and returns { ok: {} } — the turn continues without memory context under the retry-ownership doctrine (Vertex-upstream retries live at the google-genai SDK; see `gralkor/TEST_TREES.md › Retry ownership`)
-  when autoRecall is disabled
-    then recall is not called
   when no user query can be extracted (empty/system-only trailing messages)
     then recall is not called
 ```
@@ -43,9 +41,7 @@ before_prompt_build
 
 ```
 agent_end
-  when autoCapture is disabled
-    then capture is not called
-  when autoCapture is enabled and messages are present
+  when messages are present
     then ctx is converted via ctxToMessages to a canonical [%{role, content}] sequence
       ordered user → behaviour(s) → assistant
     then GralkorClient.capture(sessionId, groupId, pluginConfig.agentName, messages) is called with that sequence
@@ -262,7 +258,7 @@ config
       then it throws (agentName is required; same fail-fast as above)
     when resolveConfig is called with a non-blank agentName
       then the result includes agentName verbatim
-        and other unspecified fields equal defaultConfig — autoCapture/autoRecall/search defaults are applied
+        and other unspecified fields equal defaultConfig — search defaults are applied
         and llm / embedder are left undefined so the Python server applies its own defaults
         (single source of truth — the plugin never duplicates server-side provider/model defaults)
     when resolveConfig is called with partial overrides (with a non-blank agentName)
@@ -288,42 +284,34 @@ config
 plugin-lifecycle
   plugin manifest exports
     when src/index.ts is imported
-      then id is "openclaw-gralkor"
+      then id is "gralkor"
       then kind is "memory"
       then tools lists the four tool names (memory_search, memory_add, memory_build_indices, memory_build_communities)
-      then configSchema declares the expected top-level properties (dataDir, workspaceDir, autoCapture, autoRecall, search, test, and the four apiKey fields)
+      then configSchema declares the expected top-level properties (dataDir, workspaceDir, search, test, and the four apiKey fields)
   when register() is called with api.registrationMode set to anything other than "full" (e.g. "cli-metadata", "setup-only", "setup-runtime")
     then register() returns immediately as a no-op — OpenClaw is enumerating CLI commands or running a non-activation lifecycle phase, not asking us to boot. This plugin exposes no CLI commands, so non-full modes have nothing to register.
-  when register() is called with api.registrationMode === "full" (or absent, for hosts that predate the field) for the first time in the process AND EXTERNAL_GRALKOR_URL is unset
+  when register() is called with api.registrationMode === "full" (or absent, for hosts that predate the field) for the first time in the process
     then the Python server manager is constructed via gralkor-ts and manager.start() is fired fire-and-forget (self-start) — OpenClaw does not call api.registerService().start for memory-kind plugins, so relying on that alone leaves uvicorn unspawned and every hook fails with "fetch failed"
     then api.registerService({id: "gralkor-server", start, stop}) is registered so OpenClaw has a handle for graceful shutdown (stop on SIGTERM)
     then GralkorHttpClient is constructed with baseUrl = GRALKOR_URL (loopback default)
     then the three hooks (before_prompt_build, agent_end, session_end) are registered with OpenClaw
     then one tool factory is registered with OpenClaw, exposing four tool definitions: memory_search, memory_add, memory_build_indices, memory_build_communities
-    then a process-wide "registered" flag is set on globalThis (under Symbol.for("@susu-eng/openclaw-gralkor:registered")) as a backstop in case "full" is delivered more than once (e.g. a registry rebuild within one process)
+    then a process-wide "registered" flag is set on globalThis (under Symbol.for("@susulabs/gralkor:registered")) as a backstop in case "full" is delivered more than once (e.g. a registry rebuild within one process)
   when register() is called in "full" mode and the process-wide flag is already set
     then register() returns immediately as a no-op — no second server manager, no second start(), no second hook/tool/service binding
     then the hooks, tools, and service bound on the first call remain in force for the process lifetime
-  when register() is called in "full" mode with missing dataDir AND EXTERNAL_GRALKOR_URL is unset
+  when register() is called in "full" mode with missing dataDir
     then registerServerService throws synchronously before any service is registered (fail-fast on config misuse) — the process-wide flag is NOT set, so a later register() with a fixed config can succeed
-  when register() is called in "full" mode with EXTERNAL_GRALKOR_URL set in the environment
-    then createServerManager is NOT called (no local Python spawn; an externally-managed gralkor server is the source of memory)
-    then GralkorHttpClient is constructed with baseUrl = EXTERNAL_GRALKOR_URL
-    then waitForHealth is fired fire-and-forget against that URL (so the register pipeline is not blocked by remote-readiness)
-    then api.registerService is NOT called (no manager to gracefully stop)
-    then the three hooks (before_prompt_build, agent_end, session_end) are registered with OpenClaw against the remote-pointing client
-    then one tool factory is registered with OpenClaw against the remote-pointing client, exposing four tool definitions: memory_search, memory_add, memory_build_indices, memory_build_communities
-    then dataDir is ignored — it configures only the local-spawn path's venv + falkordblite location, which thin-client mode does not use; whether it is set or unset, present or absent, has no effect
   when the process receives SIGTERM
     then no client-side flush is needed — the Python server's lifespan shutdown handles buffer flushes
 ```
 
 ## Testing
 
-Unit tests run against `GralkorInMemoryClient` from `@susu-eng/gralkor-ts/testing`. No real network, no real Python. Import in tests:
+Unit tests run against `GralkorInMemoryClient` from `@susulabs/gralkor/testing`. No real network, no real Python. Import in tests:
 
 ```ts
-import { GralkorInMemoryClient } from "@susu-eng/gralkor-ts/testing";
+import { GralkorInMemoryClient } from "@susulabs/gralkor/testing";
 ```
 
 Call `reset()` in `setup`, configure canned responses with `setResponse()`, inspect call arrays after.
@@ -339,4 +327,4 @@ pnpm run test:unit
 - `pnpm run publish:clawhub -- <level>` — publishes to clawhub. Uses `.clawhubignore` to gate what ships.
 - `pnpm run publish:all -- <level>` — both in sequence.
 
-The Python server is not shipped from this repo — it ships inside `@susu-eng/gralkor-ts`, which this plugin depends on. `gralkor-ts` bundles a copy of the monorepo's `server/` at its own build time, and `createServerManager()` resolves `bundledServerDir()` to that copy. `openclaw plugins install @susu-eng/openclaw-gralkor` therefore pulls the server transitively via the gralkor-ts dependency.
+The Python server is not shipped from this repo — it ships inside `@susulabs/gralkor`, which this plugin depends on. `gralkor-ts` bundles a copy of the monorepo's `server/` at its own build time, and `createServerManager()` resolves `bundledServerDir()` to that copy. `openclaw plugins install @susulabs/gralkor` therefore pulls the server transitively via the gralkor-ts dependency.

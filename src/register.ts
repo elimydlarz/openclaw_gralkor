@@ -6,7 +6,7 @@ import {
   GRALKOR_URL,
   type GralkorClient,
   type ServerManager,
-} from "@susu-eng/gralkor-ts";
+} from "@susulabs/gralkor-ts";
 import { buildSecretEnv, type GralkorPluginConfig } from "./config.js";
 import type { MemoryPluginApi } from "./types.js";
 import { runMemorySearch } from "./tools/memory-search.js";
@@ -150,8 +150,6 @@ export function registerHooks(
         agentName: config.agentName,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         messages: (event.messages ?? []) as any,
-        autoRecall: config.autoRecall.enabled,
-        maxResults: config.autoRecall.maxResults,
       });
       if ("error" in result) throw new Error(JSON.stringify(result.error));
       return result.ok;
@@ -170,7 +168,6 @@ export function registerHooks(
         agentName: config.agentName,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         messages: (event.messages ?? []) as any,
-        autoCapture: config.autoCapture.enabled,
       });
       if ("error" in result) throw new Error(JSON.stringify(result.error));
     },
@@ -195,7 +192,7 @@ export function registerServerService(
   }
 
   // serverDir defaults to the bundled Python server shipped inside
-  // @susu-eng/gralkor-ts — no override needed here.
+  // @susulabs/gralkor — no override needed here.
   const manager = createServerManager({
     dataDir: config.dataDir,
     port: 4000,

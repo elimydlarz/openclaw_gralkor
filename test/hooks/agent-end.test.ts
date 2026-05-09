@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { GralkorInMemoryClient } from "@susu-eng/gralkor-ts/testing";
+import { GralkorInMemoryClient } from "@susulabs/gralkor-ts/testing";
 import { runAgentEnd } from "../../src/hooks/agent-end.js";
 import { setSessionGroup, resetSessionMap } from "../../src/session-map.js";
 import type { MessageEntry } from "../../src/ctx-to-messages.js";
@@ -17,7 +17,7 @@ describe("agent_end hook", () => {
     resetSessionMap();
   });
 
-  it("calls GralkorClient.capture with a canonical Message[] when autoCapture is enabled and ctx is valid", async () => {
+  it("calls GralkorClient.capture with a canonical Message[] when ctx is valid", async () => {
     setSessionGroup("sess-1", "user-1");
     client.setResponse("capture", { ok: true });
 
@@ -25,7 +25,6 @@ describe("agent_end hook", () => {
       sessionKey: "sess-1",
       agentName: "TestAgent",
       messages: okMessages,
-      autoCapture: true,
     });
 
     expect(result).toEqual({ ok: true });
@@ -54,7 +53,6 @@ describe("agent_end hook", () => {
         { role: "toolResult", content: "sunny" },
         { role: "assistant", content: [{ type: "text", text: "it's sunny" }] },
       ],
-      autoCapture: true,
     });
 
     const [, , , messages] = client.captures[0];
@@ -67,20 +65,6 @@ describe("agent_end hook", () => {
     ]);
   });
 
-  it("skips capture when autoCapture is disabled", async () => {
-    setSessionGroup("sess-1", "user-1");
-
-    const result = await runAgentEnd(client, {
-      sessionKey: "sess-1",
-      agentName: "TestAgent",
-      messages: okMessages,
-      autoCapture: false,
-    });
-
-    expect(result).toEqual({ ok: true });
-    expect(client.captures).toEqual([]);
-  });
-
   it("skips capture when messages are empty", async () => {
     setSessionGroup("sess-1", "user-1");
 
@@ -88,7 +72,6 @@ describe("agent_end hook", () => {
       sessionKey: "sess-1",
       agentName: "TestAgent",
       messages: [],
-      autoCapture: true,
     });
 
     expect(result).toEqual({ ok: true });
@@ -102,7 +85,6 @@ describe("agent_end hook", () => {
       sessionKey: "sess-1",
       agentName: "TestAgent",
       messages: [{ role: "user", content: "unanswered" }],
-      autoCapture: true,
     });
 
     expect(result).toEqual({ ok: true });
@@ -117,7 +99,6 @@ describe("agent_end hook", () => {
       sessionKey: "sess-1",
       agentName: "TestAgent",
       messages: okMessages,
-      autoCapture: true,
     });
 
     expect(result).toEqual({ error: "gralkor_down" });
@@ -130,7 +111,6 @@ describe("agent_end hook", () => {
       sessionKey: "unregistered",
       agentName: "TestAgent",
       messages: okMessages,
-      autoCapture: true,
     });
 
     expect(result).toEqual({ error: "session_not_registered" });
@@ -151,7 +131,6 @@ describe("agent_end hook", () => {
         },
         { role: "assistant", content: [{ type: "text", text: "bug-fix" }] },
       ],
-      autoCapture: true,
     });
 
     expect(result).toEqual({ ok: true });
@@ -172,7 +151,6 @@ describe("agent_end hook", () => {
         },
         { role: "assistant", content: [{ type: "text", text: "Hey Eli." }] },
       ],
-      autoCapture: true,
     });
 
     expect(result).toEqual({ ok: true });

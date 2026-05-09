@@ -1,4 +1,4 @@
-import type { GralkorClient, Result } from "@susu-eng/gralkor-ts";
+import type { GralkorClient, Result } from "@susulabs/gralkor-ts";
 
 /**
  * The `memory_build_indices` admin tool. Thin wrapper around

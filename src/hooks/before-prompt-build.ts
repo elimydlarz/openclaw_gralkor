@@ -1,4 +1,4 @@
-import { sanitizeGroupId, type GralkorClient, type Result } from "@susu-eng/gralkor-ts";
+import { sanitizeGroupId, type GralkorClient, type Result } from "@susulabs/gralkor-ts";
 import { textFromContent, type MessageEntry } from "../ctx-to-messages.js";
 import { setSessionGroup } from "../session-map.js";
 
@@ -7,9 +7,6 @@ export interface BeforePromptBuildCtx {
   agentId: string;
   agentName: string;
   messages: MessageEntry[];
-  autoRecall: boolean;
-  /** Max facts to interpret. Forwarded to /recall as max_results. Omit to use the server default. */
-  maxResults?: number;
 }
 
 export interface BeforePromptBuildOutput {
@@ -23,9 +20,8 @@ export interface BeforePromptBuildOutput {
  * 1. **Register the session → group mapping** (unconditionally) so
  *    `agent_end`, `session_end`, and the `memory_*` tools can find the
  *    groupId later.
- * 2. **Auto-recall** (if enabled and a query can be extracted): ask
- *    Gralkor for relevant memory and inject it into the prompt via
- *    `prependContext`.
+ * 2. **Auto-recall** (if a query can be extracted): ask Gralkor for
+ *    relevant memory and inject it into the prompt via `prependContext`.
  *
  * "Query" is the trailing user message's text — the thing this turn is
  * actually about. Earlier user messages belong to past turns already
@@ -37,8 +33,6 @@ export async function runBeforePromptBuild(
 ): Promise<Result<BeforePromptBuildOutput>> {
   setSessionGroup(ctx.sessionKey, ctx.agentId);
 
-  if (!ctx.autoRecall) return { ok: {} };
-
   const query = trailingUserText(ctx.messages);
   if (query === null) return { ok: {} };
 
@@ -47,7 +41,6 @@ export async function runBeforePromptBuild(
     ctx.sessionKey,
     query,
     ctx.agentName,
-    ctx.maxResults,
   );
   // Recall is best-effort under the retry-ownership doctrine — the
   // google-genai SDK owns Vertex-upstream retries (see

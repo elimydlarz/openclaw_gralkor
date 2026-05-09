@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { vol, fs as memfsFs } from "memfs";
-import { GralkorInMemoryClient } from "@susu-eng/gralkor-ts/testing";
+import { GralkorInMemoryClient } from "@susulabs/gralkor-ts/testing";
 import { runNativeIndexer, GRALKOR_MARKER } from "../src/native-indexer.js";
 
 vi.mock("node:fs", () => memfsFs);

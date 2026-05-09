@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { ServerManager } from "@susu-eng/gralkor-ts";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { ServerManager } from "@susulabs/gralkor-ts";
 import { registerServerService } from "../src/register.js";
 import * as manifest from "../src/index.js";
 import { makeApi, makeConfig, type TestApi } from "./helpers.js";
@@ -13,8 +13,8 @@ const gralkorTsMocks = vi.hoisted(() => ({
   GRALKOR_URL: "http://127.0.0.1:4000",
 }));
 
-vi.mock("@susu-eng/gralkor-ts", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@susu-eng/gralkor-ts")>();
+vi.mock("@susulabs/gralkor-ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@susulabs/gralkor-ts")>();
   return {
     ...actual,
     createServerManager: gralkorTsMocks.createServerManager,
@@ -22,20 +22,6 @@ vi.mock("@susu-eng/gralkor-ts", async (importOriginal) => {
     GralkorHttpClient: gralkorTsMocks.GralkorHttpClient,
     GRALKOR_URL: gralkorTsMocks.GRALKOR_URL,
   };
-});
-
-// Defensive: every test in this file runs in a known EXTERNAL_GRALKOR_URL state.
-// Tests that need it set assign explicitly; everything else assumes unset.
-const SAVED_EXTERNAL_GRALKOR_URL = process.env.EXTERNAL_GRALKOR_URL;
-beforeEach(() => {
-  delete process.env.EXTERNAL_GRALKOR_URL;
-});
-afterEach(() => {
-  if (SAVED_EXTERNAL_GRALKOR_URL === undefined) {
-    delete process.env.EXTERNAL_GRALKOR_URL;
-  } else {
-    process.env.EXTERNAL_GRALKOR_URL = SAVED_EXTERNAL_GRALKOR_URL;
-  }
 });
 
 describe("plugin manifest exports", () => {
@@ -62,8 +48,6 @@ describe("plugin manifest exports", () => {
     for (const key of [
       "dataDir",
       "workspaceDir",
-      "autoCapture",
-      "autoRecall",
       "search",
       "test",
       "googleApiKey",
@@ -250,63 +234,3 @@ describe("register() idempotence (plugin-lifecycle tree)", () => {
   });
 });
 
-describe("register() with EXTERNAL_GRALKOR_URL set (plugin-lifecycle tree — thin-client branch)", () => {
-  let manager: ServerManager;
-
-  beforeEach(() => {
-    manifest.resetRegistrationForTests();
-    manager = {
-      start: vi.fn(async () => {}),
-      stop: vi.fn(async () => {}),
-      isRunning: vi.fn(() => false),
-    };
-    gralkorTsMocks.createServerManager.mockReset();
-    gralkorTsMocks.createServerManager.mockReturnValue(manager);
-    gralkorTsMocks.waitForHealth.mockReset();
-    gralkorTsMocks.waitForHealth.mockResolvedValue(undefined);
-    gralkorTsMocks.GralkorHttpClient.mockClear();
-    process.env.EXTERNAL_GRALKOR_URL = "http://gralkor.example.test:4000";
-  });
-
-  it("createServerManager is NOT called; api.registerService is NOT called; GralkorHttpClient points at EXTERNAL_GRALKOR_URL; waitForHealth polls the remote URL; three hooks and one tool factory are registered", async () => {
-    const api = makeApi();
-    (api as unknown as { pluginConfig: unknown }).pluginConfig = {
-      agentName: "TestAgent",
-    };
-
-    manifest.register(api);
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(gralkorTsMocks.createServerManager).not.toHaveBeenCalled();
-    expect(api.registered).toHaveLength(0);
-    expect(gralkorTsMocks.GralkorHttpClient).toHaveBeenCalledWith({
-      baseUrl: "http://gralkor.example.test:4000",
-    });
-    expect(gralkorTsMocks.waitForHealth).toHaveBeenCalledTimes(1);
-    expect(api.handlers.size).toBe(3);
-    expect(api.toolFactories).toHaveLength(1);
-  });
-
-  it("dataDir is ignored — neither required nor consulted; whether set or unset, behaviour is identical", async () => {
-    const apiWithoutDataDir = makeApi();
-    (apiWithoutDataDir as unknown as { pluginConfig: unknown }).pluginConfig = {
-      agentName: "TestAgent",
-    };
-    expect(() => manifest.register(apiWithoutDataDir)).not.toThrow();
-    expect(apiWithoutDataDir.handlers.size).toBe(3);
-    expect(apiWithoutDataDir.registered).toHaveLength(0);
-
-    manifest.resetRegistrationForTests();
-
-    const apiWithDataDir = makeApi();
-    (apiWithDataDir as unknown as { pluginConfig: unknown }).pluginConfig = {
-      agentName: "TestAgent",
-      dataDir: "/tmp/should-be-ignored",
-    };
-    expect(() => manifest.register(apiWithDataDir)).not.toThrow();
-    expect(apiWithDataDir.handlers.size).toBe(3);
-    expect(apiWithDataDir.registered).toHaveLength(0);
-    expect(gralkorTsMocks.createServerManager).not.toHaveBeenCalled();
-  });
-});

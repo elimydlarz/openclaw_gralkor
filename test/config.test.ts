@@ -37,12 +37,8 @@ describe("config — resolveConfig", () => {
   it("overrides only the fields provided and keeps defaults elsewhere", () => {
     const merged = resolveConfig({
       agentName: "TestAgent",
-      autoCapture: { enabled: false },
-      autoRecall: { enabled: true, maxResults: 3 },
       search: { maxResults: 7 },
     });
-    expect(merged.autoCapture.enabled).toBe(false);
-    expect(merged.autoRecall.maxResults).toBe(3);
     expect(merged.search.maxResults).toBe(7);
     expect(merged.llm).toBeUndefined();
   });

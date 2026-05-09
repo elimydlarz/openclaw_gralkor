@@ -1,4 +1,4 @@
-import { sanitizeGroupId } from "@susu-eng/gralkor-ts";
+import { sanitizeGroupId } from "@susulabs/gralkor-ts";
 
 /**
  * Module-level session → group map. Shared across all plugin instances

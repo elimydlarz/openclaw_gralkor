@@ -43,8 +43,6 @@ export function makeConfig(
   return {
     agentName: "TestAgent",
     dataDir: "/tmp/fake-gralkor",
-    autoCapture: { enabled: true },
-    autoRecall: { enabled: true, maxResults: 10 },
     search: { maxResults: 20 },
     test: false,
     ...overrides,

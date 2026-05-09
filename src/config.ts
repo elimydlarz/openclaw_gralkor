@@ -1,27 +1,11 @@
-/**
- * OpenClaw-specific plugin config. Shapes that OpenClaw hands us via
- * `api.pluginConfig` at register() time.
- *
- * The HTTP client + Python server + ontology validation all live in
- * @susu-eng/gralkor-ts now. This file keeps only the plugin-surface
- * knobs — autoCapture / autoRecall / search / provider keys.
- *
- * **Defaults policy.** Provider/model defaults live in the Python server
- * (single source of truth). When `llm` / `embedder` is omitted here we
- * pass `undefined` straight through to `createServerManager` and the
- * server fills in. We do not duplicate the server's defaults client-side.
- */
-
 import {
   type ModelConfig,
   type OntologyConfig,
   validateOntologyConfig as libValidate,
-} from "@susu-eng/gralkor-ts";
+} from "@susulabs/gralkor-ts";
 
 export interface GralkorPluginConfig {
   agentName: string;
-  autoCapture: { enabled: boolean };
-  autoRecall: { enabled: boolean; maxResults: number };
   search: { maxResults: number };
   llm?: ModelConfig;
   embedder?: ModelConfig;
@@ -35,10 +19,7 @@ export interface GralkorPluginConfig {
   groqApiKey?: string;
 }
 
-/** Defaults for the optional knobs. agentName is required and has no default. */
 export const defaultConfig = {
-  autoCapture: { enabled: true },
-  autoRecall: { enabled: true, maxResults: 10 },
   search: { maxResults: 20 },
 } as const;
 
@@ -55,14 +36,6 @@ export function resolveConfig(
 
   return {
     agentName,
-    autoCapture: {
-      enabled: raw.autoCapture?.enabled ?? defaultConfig.autoCapture.enabled,
-    },
-    autoRecall: {
-      enabled: raw.autoRecall?.enabled ?? defaultConfig.autoRecall.enabled,
-      maxResults:
-        raw.autoRecall?.maxResults ?? defaultConfig.autoRecall.maxResults,
-    },
     search: {
       maxResults: raw.search?.maxResults ?? defaultConfig.search.maxResults,
     },

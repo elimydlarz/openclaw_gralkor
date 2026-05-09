@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { GralkorInMemoryClient } from "@susu-eng/gralkor-ts/testing";
+import { GralkorInMemoryClient } from "@susulabs/gralkor-ts/testing";
 import { runMemoryBuildCommunities } from "../../src/tools/memory-build-communities.js";
 import { setSessionGroup, resetSessionMap } from "../../src/session-map.js";
 

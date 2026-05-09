@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import type { GralkorClient } from "@susu-eng/gralkor-ts";
-import { GralkorInMemoryClient } from "@susu-eng/gralkor-ts/testing";
+import type { GralkorClient } from "@susulabs/gralkor-ts";
+import { GralkorInMemoryClient } from "@susulabs/gralkor-ts/testing";
 import { registerHooks, registerTools } from "../src/register.js";
 import { resetSessionMap, setSessionGroup } from "../src/session-map.js";
 import { makeApi, makeConfig, type TestApi } from "./helpers.js";

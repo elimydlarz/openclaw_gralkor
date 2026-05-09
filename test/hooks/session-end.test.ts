@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { GralkorInMemoryClient } from "@susu-eng/gralkor-ts/testing";
+import { GralkorInMemoryClient } from "@susulabs/gralkor-ts/testing";
 import { runSessionEnd } from "../../src/hooks/session-end.js";
 import { setSessionGroup, resetSessionMap } from "../../src/session-map.js";
 

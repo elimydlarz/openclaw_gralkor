@@ -5,8 +5,7 @@ import {
   GralkorHttpClient,
   GRALKOR_URL,
   validateOntologyConfig,
-  waitForHealth,
-} from "@susu-eng/gralkor-ts";
+} from "@susulabs/gralkor-ts";
 import {
   resolveConfig,
   defaultConfig,
@@ -32,14 +31,14 @@ try {
   /* not critical */
 }
 
-const REGISTERED = Symbol.for("@susu-eng/openclaw-gralkor:registered");
+const REGISTERED = Symbol.for("@susulabs/gralkor:registered");
 type RegisteredSlot = { [REGISTERED]?: boolean };
 
 export function resetRegistrationForTests(): void {
   (globalThis as RegisteredSlot)[REGISTERED] = false;
 }
 
-export const id = "openclaw-gralkor";
+export const id = "@susulabs/gralkor";
 export const name = "Gralkor Memory (OpenClaw)";
 export const description =
   "Persistent, temporally-aware memory via Graphiti knowledge graphs and FalkorDB";
@@ -59,28 +58,6 @@ export const configSchema = {
     agentName: {
       type: "string" as const,
       minLength: 1,
-    },
-    autoCapture: {
-      type: "object" as const,
-      properties: {
-        enabled: {
-          type: "boolean" as const,
-          default: defaultConfig.autoCapture.enabled,
-        },
-      },
-    },
-    autoRecall: {
-      type: "object" as const,
-      properties: {
-        enabled: {
-          type: "boolean" as const,
-          default: defaultConfig.autoRecall.enabled,
-        },
-        maxResults: {
-          type: "number" as const,
-          default: defaultConfig.autoRecall.maxResults,
-        },
-      },
     },
     search: {
       type: "object" as const,
@@ -159,34 +136,15 @@ export function register(api: MemoryPluginApi): void {
         ` llm=${llmSummary}` +
         ` embedder=${embedderSummary}` +
         ` ontology=${ontologySummary}` +
-        ` autoCapture=${config.autoCapture.enabled}` +
-        ` autoRecall=${config.autoRecall.enabled} maxResults=${config.autoRecall.maxResults}` +
         ` test=${config.test}` +
         ` dataDir=${config.dataDir ?? "default"}`,
     );
 
-    const externalUrl = process.env.EXTERNAL_GRALKOR_URL;
-    const baseUrl = externalUrl ?? GRALKOR_URL;
-    const client = new GralkorHttpClient({ baseUrl });
+    const client = new GralkorHttpClient({ baseUrl: GRALKOR_URL });
 
     registerTools(api, client, config);
     registerHooks(api, client, config);
-
-    if (externalUrl) {
-      console.log(
-        `[gralkor] thin-client mode: pointing at ${externalUrl} (no local server spawn)`,
-      );
-      void waitForHealth(client, { timeoutMs: 120_000, backoffMs: 500 }).catch(
-        (err) => {
-          console.error(
-            "[gralkor] thin-client: waitForHealth failed:",
-            err instanceof Error ? err.message : err,
-          );
-        },
-      );
-    } else {
-      registerServerService(api, config, version);
-    }
+    registerServerService(api, config, version);
 
     slot[REGISTERED] = true;
   } catch (err) {

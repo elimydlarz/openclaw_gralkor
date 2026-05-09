@@ -1,7 +1,7 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import type { GralkorClient } from "@susu-eng/gralkor-ts";
+import type { GralkorClient } from "@susulabs/gralkor-ts";
 
 export const GRALKOR_MARKER = "<!-- GRALKOR:INDEXED -->";
 
