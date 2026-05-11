@@ -1,7 +1,7 @@
 {
   "name": "@susulabs/gralkor",
   "displayName": "Gralkor Memory (OpenClaw)",
-  "version": "2.1.7",
+  "version": "2.1.8",
   "description": "OpenClaw memory plugin powered by Gralkor (Graphiti + FalkorDB). Installs a plugin that supervises the Gralkor Python server and wires its HTTP API into OpenClaw hooks and tools.",
   "type": "module",
   "main": "./dist/index.js",
@@ -10,10 +10,10 @@
       "./dist/index.js"
     ],
     "compat": {
-      "pluginApi": ">=2026.4.2"
+      "pluginApi": ">=2026.5.7"
     },
     "build": {
-      "openclawVersion": "2026.4.2"
+      "openclawVersion": "2026.5.7"
     }
   },
   "scripts": {
@@ -59,11 +59,11 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@susulabs/gralkor-ts": "^1.1.4",
-    "openclaw": "2026.4.2"
+    "@susulabs/gralkor-ts": "^1.1.5",
+    "openclaw": "2026.5.7"
   },
   "peerDependencies": {
-    "openclaw": "2026.4.2"
+    "openclaw": "2026.5.7"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",
