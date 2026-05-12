@@ -89,12 +89,6 @@
       }
     }
   },
-  "tools": [
-    "memory_search",
-    "memory_add",
-    "memory_build_indices",
-    "memory_build_communities"
-  ],
   "contracts": {
     "tools": [
       "memory_search",
@@ -132,5 +126,5 @@
       "label": "Groq API key"
     }
   },
-  "version": "2.1.9"
+  "version": "2.1.10"
 }
