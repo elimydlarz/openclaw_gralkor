@@ -285,15 +285,20 @@ config
 plugin-lifecycle
   plugin manifest exports
     when src/index.ts is imported
-      then id is "gralkor"
+      then id is "@susulabs/gralkor" (the npm package name)
       then kind is "memory"
       then tools lists the four tool names (memory_search, memory_add, memory_build_indices, memory_build_communities)
       then configSchema declares the expected top-level properties (dataDir, workspaceDir, search, test, and the four apiKey fields)
+  openclaw.plugin.json (the static manifest the OpenClaw 2026.5.7+ loader reads at install time)
+    when openclaw.plugin.json is loaded as JSON
+      then contracts.tools lists the four tool names (memory_search, memory_add, memory_build_indices, memory_build_communities)
+        — OpenClaw 2026.5.7's loader (`src/plugins/registry.ts:527` calling `normalizePluginToolContractNames(record.contracts)`) gates tool registration on this field; missing/empty fails with diagnostic "plugin must declare contracts.tools before registering agent tools" and no tools register. There is no top-level `tools` field — it is not part of the `PluginManifest` schema (see openclaw `src/plugins/manifest.ts:291`) and would be silently ignored.
+      then version equals package.json version (publish-npm.sh syncs them)
   when register() is called with api.registrationMode set to anything other than "full" (e.g. "cli-metadata", "setup-only", "setup-runtime")
     then register() returns immediately as a no-op — OpenClaw is enumerating CLI commands or running a non-activation lifecycle phase, not asking us to boot. This plugin exposes no CLI commands, so non-full modes have nothing to register.
   when register() is called with api.registrationMode === "full" (or absent, for hosts that predate the field) for the first time in the process
-    then the Python server manager is constructed via gralkor-ts and manager.start() is fired fire-and-forget (self-start) — OpenClaw does not call api.registerService().start for memory-kind plugins, so relying on that alone leaves uvicorn unspawned and every hook fails with "fetch failed"
-    then api.registerService({id: "gralkor-server", start, stop}) is registered so OpenClaw has a handle for graceful shutdown (stop on SIGTERM)
+    then the Python server manager is constructed via gralkor-ts and api.registerService({id: "gralkor-server", start, stop}) is registered — OpenClaw 2026.5.7's plugin host drives the lifecycle by calling service.start(serviceContext) for every registered service (see node_modules/openclaw/dist/services-DqAbDrlq.js → startPluginServices); the plugin must NOT also self-start the manager or it spawns two uvicorn processes that race on port 4000
+    then the manager is constructed with wheelRepo parsed from package.json's repository.url via parseGithubRepoSlug — the runtime fetches the falkordblite wheel from https://github.com/${wheelRepo}/releases/download/v${version}/... and the publish script (scripts/publish-clawhub.sh) uploads to that same repo via `gh release`. One source (this field) keeps publish and runtime in lockstep; an empty/non-github URL fails fast at module load.
     then GralkorHttpClient is constructed with baseUrl = GRALKOR_URL (loopback default)
     then the three hooks (before_prompt_build, agent_end, session_end) are registered with OpenClaw
     then one tool factory is registered with OpenClaw, exposing four tool definitions: memory_search, memory_add, memory_build_indices, memory_build_communities

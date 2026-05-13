@@ -4,6 +4,10 @@ OpenClaw memory plugin powered by [Gralkor](https://github.com/elimydlarz/gralko
 
 For non-OpenClaw uses see [`@susulabs/gralkor`](https://www.npmjs.com/package/@susulabs/gralkor) (the underlying TypeScript adapter this plugin builds on) or the [Gralkor monorepo](https://github.com/elimydlarz/gralkor).
 
+## Compatibility
+
+Requires OpenClaw `>= 2026.5.7`. The 2026.5.7 plugin loader gates tool registration on the manifest's `contracts.tools` field; older plugin builds (≤ 2.1.8) loaded but registered no tools and are not supported.
+
 ## Install
 
 ```bash

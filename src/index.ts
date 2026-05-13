@@ -22,14 +22,31 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const pluginDir = join(__dirname, ".."); // dist/ → plugin root
 
-let version = "unknown";
-try {
-  version =
-    JSON.parse(readFileSync(join(pluginDir, "package.json"), "utf-8"))
-      .version ?? "unknown";
-} catch {
-  /* not critical */
+const pkgJson = JSON.parse(
+  readFileSync(join(pluginDir, "package.json"), "utf-8"),
+) as { version: string; repository?: { url?: string } };
+
+const version: string = pkgJson.version;
+
+/**
+ * Parse a GitHub `owner/repo` slug from a package.json `repository.url` field.
+ * The slug is passed to `createServerManager` as `wheelRepo` and to the
+ * `falkordblite` wheel URL the server-manager downloads at boot — the same
+ * slug the publish script (`scripts/publish-clawhub.sh`) uploads to via
+ * `gh release upload`. Deriving both sides from one source (this field)
+ * keeps publish and runtime in lockstep.
+ */
+export function parseGithubRepoSlug(repositoryUrl: string): string {
+  const match = repositoryUrl.match(/github\.com[:/]([^/]+)\/([^/.]+?)(?:\.git)?$/);
+  if (!match) {
+    throw new Error(
+      `Cannot parse GitHub owner/repo from repository.url=${JSON.stringify(repositoryUrl)} — expected a github.com URL`,
+    );
+  }
+  return `${match[1]}/${match[2]}`;
 }
+
+const wheelRepo = parseGithubRepoSlug(pkgJson.repository?.url ?? "");
 
 const REGISTERED = Symbol.for("@susulabs/gralkor:registered");
 type RegisteredSlot = { [REGISTERED]?: boolean };
@@ -144,7 +161,7 @@ export function register(api: MemoryPluginApi): void {
 
     registerTools(api, client, config);
     registerHooks(api, client, config);
-    registerServerService(api, config, version);
+    registerServerService(api, config, version, wheelRepo);
 
     slot[REGISTERED] = true;
   } catch (err) {

@@ -81,6 +81,34 @@ if [[ -z "${DRY_RUN:-}" ]]; then
       gh release create "$tag" --title "$tag" --notes "Release $tag" --target "$source_commit"
     fi
     gh release upload "$tag" "$wheel_file" --clobber
+
+    # Verify the wheel is reachable at the exact URL the runtime will hit.
+    # Both URLs are derived from package.json's repository.url — runtime via
+    # parseGithubRepoSlug in src/index.ts, publish via this script's `gh release`
+    # which operates on the current repo (must match repository.url). If those
+    # two ever drift, this check fails the publish before any consumer boots
+    # against a 404. The historical bug: gralkor-ts hardcoded WHEEL_REPO to
+    # "elimydlarz/gralkor" while uploads went to "elimydlarz/openclaw_gralkor",
+    # so v2.1.10 plugins shipped with a wheel URL that 404'd.
+    repo_url=$(node -p "require('./package.json').repository.url")
+    slug=$(node -e "
+const u = process.argv[1];
+const m = u.match(/github\.com[:\/]([^/]+)\/([^/.]+?)(?:\.git)?$/);
+if (!m) { console.error('cannot parse owner/repo from ' + u); process.exit(1); }
+process.stdout.write(m[1] + '/' + m[2]);
+" "$repo_url")
+    wheel_name=$(basename "$wheel_file")
+    wheel_url="https://github.com/${slug}/releases/download/${tag}/${wheel_name}"
+    echo "Verifying wheel is reachable at ${wheel_url}..."
+    http_status=$(curl -sI -L -o /dev/null -w "%{http_code}" "$wheel_url")
+    if [[ "$http_status" != "200" ]]; then
+      echo "Error: wheel URL returned HTTP ${http_status} — runtime boot will 404" >&2
+      echo "  url: ${wheel_url}" >&2
+      echo "  publish target: $(git remote get-url origin 2>/dev/null || echo unknown)" >&2
+      echo "  package.json repository.url: ${repo_url}" >&2
+      exit 1
+    fi
+    echo "Wheel URL verified (HTTP 200)."
   fi
 
   clawhub_log=$(mktemp)

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ServerManager } from "@susulabs/gralkor-ts";
 import { registerServerService } from "../src/register.js";
@@ -25,8 +27,8 @@ vi.mock("@susulabs/gralkor-ts", async (importOriginal) => {
 });
 
 describe("plugin manifest exports", () => {
-  it("id is 'openclaw-gralkor'", () => {
-    expect(manifest.id).toBe("openclaw-gralkor");
+  it("id is the npm package name '@susulabs/gralkor'", () => {
+    expect(manifest.id).toBe("@susulabs/gralkor");
   });
 
   it("kind is 'memory'", () => {
@@ -40,6 +42,24 @@ describe("plugin manifest exports", () => {
       "memory_build_indices",
       "memory_build_communities",
     ]);
+  });
+
+  it("openclaw.plugin.json declares contracts.tools listing the four memory tools (OpenClaw 2026.5.7+ loader gates registration on this field)", () => {
+    const pluginJsonPath = join(__dirname, "..", "openclaw.plugin.json");
+    const pluginJson = JSON.parse(readFileSync(pluginJsonPath, "utf8"));
+    expect(pluginJson.contracts?.tools).toEqual([
+      "memory_search",
+      "memory_add",
+      "memory_build_indices",
+      "memory_build_communities",
+    ]);
+  });
+
+  it("openclaw.plugin.json version equals package.json version (publish-npm.sh syncs them)", () => {
+    const root = join(__dirname, "..");
+    const pluginJson = JSON.parse(readFileSync(join(root, "openclaw.plugin.json"), "utf8"));
+    const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+    expect(pluginJson.version).toBe(packageJson.version);
   });
 
   it("configSchema declares the expected top-level properties", () => {
@@ -79,59 +99,109 @@ describe("registerServerService (plugin-lifecycle tree)", () => {
   });
 
   describe("when register() is called", () => {
-    it("fires manager.start() fire-and-forget immediately (self-start)", async () => {
+    it("does not start the manager itself — the OpenClaw 2026.5.7 host drives lifecycle via service.start", async () => {
       const api = makeApi();
       const config = makeConfig();
 
-      registerServerService(api, config, "1.1.2-test");
+      registerServerService(api, config, "1.1.2-test", "test/repo");
 
-      // Yield so any microtasks queued by fire-and-forget can run.
+      // Yield so any stray microtasks would run.
       await Promise.resolve();
       await Promise.resolve();
 
-      expect(startSpy).toHaveBeenCalledTimes(1);
+      expect(startSpy).not.toHaveBeenCalled();
     });
 
-    it("also registers a gralkor-server service for graceful shutdown", () => {
+    it("registers a gralkor-server service whose start() boots the manager", async () => {
       const api = makeApi();
       const config = makeConfig();
 
-      registerServerService(api, config, "1.1.2-test");
+      registerServerService(api, config, "1.1.2-test", "test/repo");
 
       expect(api.registered).toHaveLength(1);
       expect(api.registered[0].id).toBe("gralkor-server");
       expect(typeof api.registered[0].stop).toBe("function");
+
+      await api.registered[0].start();
+      expect(startSpy).toHaveBeenCalledTimes(1);
     });
 
-    it("does not await start() — returns synchronously so OpenClaw's register pipeline is not blocked", () => {
+    it("invoking service.start twice still only spawns one manager — boot is single-shot per host call", async () => {
       const api = makeApi();
       const config = makeConfig();
 
-      let resolved = false;
-      startSpy.mockImplementation(
-        () =>
-          new Promise<void>((r) => {
-            setTimeout(() => {
-              resolved = true;
-              r();
-            }, 5_000);
-          }),
-      );
+      registerServerService(api, config, "1.1.2-test", "test/repo");
 
-      registerServerService(api, config, "1.1.2-test");
+      // Each call to startPluginServices invokes service.start once. The
+      // plugin must not fire its own start — only the host's start drives
+      // boot, and the host calls it exactly once per registered service.
+      await api.registered[0].start();
 
-      expect(resolved).toBe(false);
+      expect(startSpy).toHaveBeenCalledTimes(1);
     });
 
     it("throws immediately if dataDir is missing", () => {
       const api = makeApi();
       const config = makeConfig({ dataDir: undefined });
 
-      expect(() => registerServerService(api, config, "1.1.2-test")).toThrow(
+      expect(() => registerServerService(api, config, "1.1.2-test", "test/repo")).toThrow(
         /dataDir is required/,
       );
       expect(startSpy).not.toHaveBeenCalled();
     });
+
+    it("forwards wheelRepo through to createServerManager (the URL the runtime downloads the falkordblite wheel from)", () => {
+      const api = makeApi();
+      const config = makeConfig();
+
+      registerServerService(api, config, "1.1.2-test", "elimydlarz/openclaw_gralkor");
+
+      expect(gralkorTsMocks.createServerManager).toHaveBeenCalledTimes(1);
+      const opts = gralkorTsMocks.createServerManager.mock.calls[0]?.[0] as {
+        wheelRepo: string;
+        version: string;
+      };
+      expect(opts.wheelRepo).toBe("elimydlarz/openclaw_gralkor");
+      expect(opts.version).toBe("1.1.2-test");
+    });
+  });
+});
+
+describe("parseGithubRepoSlug (plugin-lifecycle tree)", () => {
+  it("parses owner/repo from a git+ssh URL with .git suffix", () => {
+    expect(
+      manifest.parseGithubRepoSlug("git+ssh://git@github.com/elimydlarz/openclaw_gralkor.git"),
+    ).toBe("elimydlarz/openclaw_gralkor");
+  });
+
+  it("parses owner/repo from a git+https URL with .git suffix", () => {
+    expect(
+      manifest.parseGithubRepoSlug("git+https://github.com/elimydlarz/openclaw_gralkor.git"),
+    ).toBe("elimydlarz/openclaw_gralkor");
+  });
+
+  it("parses owner/repo from a bare https URL without .git suffix", () => {
+    expect(
+      manifest.parseGithubRepoSlug("https://github.com/elimydlarz/openclaw_gralkor"),
+    ).toBe("elimydlarz/openclaw_gralkor");
+  });
+
+  it("throws when the URL is not a github.com URL", () => {
+    expect(() => manifest.parseGithubRepoSlug("https://gitlab.com/foo/bar.git")).toThrow(
+      /github\.com/,
+    );
+  });
+
+  it("throws when the URL is empty (package.json missing repository.url)", () => {
+    expect(() => manifest.parseGithubRepoSlug("")).toThrow();
+  });
+
+  it("matches what this repo's own package.json declares — runtime and publish derive wheelRepo from the same field", () => {
+    const root = join(__dirname, "..");
+    const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
+      repository: { url: string };
+    };
+    expect(manifest.parseGithubRepoSlug(pkg.repository.url)).toBe("elimydlarz/openclaw_gralkor");
   });
 });
 
@@ -160,7 +230,7 @@ describe("register() idempotence (plugin-lifecycle tree)", () => {
     return api;
   }
 
-  it("first call constructs the manager, starts it, and binds hooks/tools/service", async () => {
+  it("first call constructs the manager and binds hooks/tools/service — but does not start the manager (host-driven via service.start)", async () => {
     const api = apiWithConfig();
 
     manifest.register(api);
@@ -168,13 +238,13 @@ describe("register() idempotence (plugin-lifecycle tree)", () => {
     await Promise.resolve();
 
     expect(gralkorTsMocks.createServerManager).toHaveBeenCalledTimes(1);
-    expect(startSpy).toHaveBeenCalledTimes(1);
+    expect(startSpy).not.toHaveBeenCalled();
     expect(api.registered).toHaveLength(1);
     expect(api.handlers.size).toBe(3);
     expect(api.toolFactories).toHaveLength(1);
   });
 
-  it("second-and-subsequent calls are no-ops — no second manager, no second start, no second bind", async () => {
+  it("second-and-subsequent calls are no-ops — no second manager, no second bind", async () => {
     const apiA = apiWithConfig();
     const apiB = apiWithConfig();
     const apiC = apiWithConfig();
@@ -186,7 +256,7 @@ describe("register() idempotence (plugin-lifecycle tree)", () => {
     await Promise.resolve();
 
     expect(gralkorTsMocks.createServerManager).toHaveBeenCalledTimes(1);
-    expect(startSpy).toHaveBeenCalledTimes(1);
+    expect(startSpy).not.toHaveBeenCalled();
     expect(apiA.registered).toHaveLength(1);
     expect(apiB.registered).toHaveLength(0);
     expect(apiC.registered).toHaveLength(0);

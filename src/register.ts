@@ -184,6 +184,7 @@ export function registerServerService(
   api: MemoryPluginApi,
   config: GralkorPluginConfig,
   version: string,
+  wheelRepo: string,
 ): ServerManager {
   if (!config.dataDir) {
     throw new Error(
@@ -197,6 +198,7 @@ export function registerServerService(
     dataDir: config.dataDir,
     port: 4000,
     version,
+    wheelRepo,
     secretEnv: buildSecretEnv(config),
     llmConfig: config.llm,
     embedderConfig: config.embedder,
@@ -212,17 +214,6 @@ export function registerServerService(
       await waitForHealth(client, { timeoutMs: 120_000, backoffMs: 500 });
     },
     stop: () => manager.stop(),
-  });
-
-  // Self-start. OpenClaw does not call service.start() for memory-kind plugins,
-  // so relying on the registerService hook alone leaves uvicorn unspawned and
-  // every hook fails with "fetch failed". Fire-and-forget here; errors surface
-  // via the server-manager's own logs.
-  void manager.start().catch((err) => {
-    console.error(
-      "[gralkor] boot: self-start failed:",
-      err instanceof Error ? err.message : err,
-    );
   });
 
   return manager;
