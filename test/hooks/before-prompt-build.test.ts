@@ -5,14 +5,9 @@ import {
   getSessionGroup,
   resetSessionMap,
 } from "../../src/session-map.js";
-import type { MessageEntry } from "../../src/ctx-to-messages.js";
 
 describe("before_prompt_build hook", () => {
   let client: GralkorInMemoryClient;
-
-  const userQ: MessageEntry[] = [
-    { role: "user", content: "what do you know about me?" },
-  ];
 
   beforeEach(() => {
     client = new GralkorInMemoryClient();
@@ -27,22 +22,22 @@ describe("before_prompt_build hook", () => {
         sessionKey: "sess-1",
         agentId: "user-with-hyphens",
         agentName: "TestAgent",
-        messages: userQ,
+        prompt: "anything",
       });
 
       expect(getSessionGroup("sess-1")).toBe("user_with_hyphens");
     });
   });
 
-  describe("when a user query can be extracted", () => {
-    it("calls recall with sanitised groupId + sessionKey + query", async () => {
+  describe("when ctx.prompt is non-empty", () => {
+    it("calls recall with sanitised groupId + sessionKey + prompt + agentName", async () => {
       client.setResponse("recall", { ok: "<gralkor-memory>x</gralkor-memory>" });
 
       await runBeforePromptBuild(client, {
         sessionKey: "sess-1",
         agentId: "user-1",
         agentName: "TestAgent",
-        messages: userQ,
+        prompt: "what do you know about me?",
       });
 
       expect(client.recalls).toEqual([
@@ -59,7 +54,7 @@ describe("before_prompt_build hook", () => {
         sessionKey: "sess-1",
         agentId: "user-1",
         agentName: "TestAgent",
-        messages: userQ,
+        prompt: "what do you know about me?",
       });
 
       expect(result).toEqual({
@@ -81,8 +76,8 @@ describe("before_prompt_build hook", () => {
           sessionKey: "sess-1",
           agentId: "user-1",
           agentName: "TestAgent",
-          messages: userQ,
-          });
+          prompt: "what do you know about me?",
+        });
 
         expect(result).toEqual({ ok: {} });
       } finally {
@@ -96,13 +91,13 @@ describe("before_prompt_build hook", () => {
     });
   });
 
-  describe("when no user query can be extracted", () => {
-    it("still registers the session but skips recall", async () => {
+  describe("when ctx.prompt is empty or whitespace", () => {
+    it("still registers the session but skips recall when prompt is empty", async () => {
       const result = await runBeforePromptBuild(client, {
         sessionKey: "sess-1",
         agentId: "user-1",
         agentName: "TestAgent",
-        messages: [], // no user message
+        prompt: "",
       });
 
       expect(result).toEqual({ ok: {} });
@@ -110,21 +105,15 @@ describe("before_prompt_build hook", () => {
       expect(getSessionGroup("sess-1")).toBe("user_1");
     });
 
-    it("uses the trailing user message when earlier ones exist", async () => {
-      client.setResponse("recall", { ok: "<gralkor-memory>x</gralkor-memory>" });
-
+    it("skips recall when prompt is whitespace-only", async () => {
       await runBeforePromptBuild(client, {
         sessionKey: "sess-1",
         agentId: "user-1",
         agentName: "TestAgent",
-        messages: [
-          { role: "user", content: "first" },
-          { role: "assistant", content: [{ type: "text", text: "ok" }] },
-          { role: "user", content: "second" },
-        ],
+        prompt: "   \n  ",
       });
 
-      expect(client.recalls[0][2]).toBe("second");
+      expect(client.recalls).toEqual([]);
     });
   });
 });

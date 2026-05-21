@@ -156,6 +156,86 @@ describe("ctxToMessages", () => {
     expect(out?.[0]).toEqual({ role: "user", content: "just a plain question" });
   });
 
+  it("renders a codex function_call as a `tool NAME ← {args}` behaviour line", () => {
+    const messages: MessageEntry[] = [
+      { role: "user", content: "run it" },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "call_abc|fc_xyz",
+            name: "exec",
+            arguments: { cmd: ["ls", "/tmp"] },
+          },
+        ],
+      },
+      { role: "assistant", content: [{ type: "text", text: "done" }] },
+    ];
+
+    const out = ctxToMessages(messages);
+    expect(out).toEqual([
+      { role: "user", content: "run it" },
+      { role: "behaviour", content: 'tool exec ← {"cmd":["ls","/tmp"]}' },
+      { role: "assistant", content: "done" },
+    ]);
+  });
+
+  it("renders a `toolResult` role with content blocks as a single `toolResult: …` behaviour line", () => {
+    const messages: MessageEntry[] = [
+      { role: "user", content: "run it" },
+      {
+        role: "toolResult",
+        content: [{ type: "text", text: "stdout from exec" }],
+      },
+      { role: "assistant", content: [{ type: "text", text: "ok" }] },
+    ];
+
+    const out = ctxToMessages(messages);
+    expect(out).toEqual([
+      { role: "user", content: "run it" },
+      { role: "behaviour", content: "toolResult: stdout from exec" },
+      { role: "assistant", content: "ok" },
+    ]);
+  });
+
+  it("strips ANSI escape sequences from behaviour text", () => {
+    const messages: MessageEntry[] = [
+      { role: "user", content: "q" },
+      {
+        role: "toolResult",
+        content: [
+          {
+            type: "text",
+            text: "[34mSTEP 1[0m\nplain line",
+          },
+        ],
+      },
+      { role: "assistant", content: [{ type: "text", text: "ok" }] },
+    ];
+
+    const out = ctxToMessages(messages);
+    expect(out?.[1]).toEqual({
+      role: "behaviour",
+      content: "toolResult: STEP 1\nplain line",
+    });
+  });
+
+  it("truncates oversized behaviour bodies with a trailing marker", () => {
+    const long = "x".repeat(2000);
+    const messages: MessageEntry[] = [
+      { role: "user", content: "q" },
+      { role: "toolResult", content: [{ type: "text", text: long }] },
+      { role: "assistant", content: [{ type: "text", text: "ok" }] },
+    ];
+
+    const out = ctxToMessages(messages);
+    const body = (out?.[1]?.content ?? "") as string;
+    expect(body.startsWith("toolResult: ")).toBe(true);
+    expect(body.length).toBeLessThan(long.length);
+    expect(body.endsWith("… [truncated]")).toBe(true);
+  });
+
   it("emits no behaviour message when an intermediate entry has no useful content", () => {
     const messages: MessageEntry[] = [
       { role: "user", content: "q" },

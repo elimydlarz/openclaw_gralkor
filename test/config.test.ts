@@ -54,6 +54,37 @@ describe("config — resolveConfig", () => {
     expect(merged.anthropicApiKey).toBeUndefined();
     expect(merged.groqApiKey).toBeUndefined();
   });
+
+  it("omits interpretMaxOutputTokens by default so the server applies its 2000-token default", () => {
+    const merged = resolveConfig({ agentName: "TestAgent" });
+    expect(merged.interpretMaxOutputTokens).toBeUndefined();
+  });
+
+  it("passes a positive-integer interpretMaxOutputTokens through unchanged", () => {
+    const merged = resolveConfig({ agentName: "TestAgent", interpretMaxOutputTokens: 4321 });
+    expect(merged.interpretMaxOutputTokens).toBe(4321);
+  });
+
+  it("throws when interpretMaxOutputTokens is zero or negative", () => {
+    expect(() =>
+      resolveConfig({ agentName: "TestAgent", interpretMaxOutputTokens: 0 }),
+    ).toThrow(/interpretMaxOutputTokens/);
+    expect(() =>
+      resolveConfig({ agentName: "TestAgent", interpretMaxOutputTokens: -5 }),
+    ).toThrow(/interpretMaxOutputTokens/);
+  });
+
+  it("throws when interpretMaxOutputTokens is not an integer", () => {
+    expect(() =>
+      resolveConfig({ agentName: "TestAgent", interpretMaxOutputTokens: 1.5 }),
+    ).toThrow(/interpretMaxOutputTokens/);
+    expect(() =>
+      resolveConfig({
+        agentName: "TestAgent",
+        interpretMaxOutputTokens: "lots" as unknown as number,
+      }),
+    ).toThrow(/interpretMaxOutputTokens/);
+  });
 });
 
 describe("config — buildSecretEnv", () => {

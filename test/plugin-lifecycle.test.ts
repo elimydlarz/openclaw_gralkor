@@ -86,6 +86,7 @@ describe("registerServerService (plugin-lifecycle tree)", () => {
   let stopSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    manifest.resetRegistrationForTests();
     startSpy = vi.fn(async () => {});
     stopSpy = vi.fn(async () => {});
     manager = {
@@ -205,7 +206,7 @@ describe("parseGithubRepoSlug (plugin-lifecycle tree)", () => {
   });
 });
 
-describe("register() idempotence (plugin-lifecycle tree)", () => {
+describe("register() lifecycle (plugin-lifecycle tree)", () => {
   let manager: ServerManager;
   let startSpy: ReturnType<typeof vi.fn>;
 
@@ -230,7 +231,7 @@ describe("register() idempotence (plugin-lifecycle tree)", () => {
     return api;
   }
 
-  it("first call constructs the manager and binds hooks/tools/service — but does not start the manager (host-driven via service.start)", async () => {
+  it("a single full-mode call binds hooks/tools/service on the api — but does not start the manager (host-driven via service.start)", async () => {
     const api = apiWithConfig();
 
     manifest.register(api);
@@ -244,7 +245,52 @@ describe("register() idempotence (plugin-lifecycle tree)", () => {
     expect(api.toolFactories).toHaveLength(1);
   });
 
-  it("second-and-subsequent calls are no-ops — no second manager, no second bind", async () => {
+  it("declares the memory capability so OpenClaw routes the memory slot through this plugin (Shape: memory capability, not non-capability)", async () => {
+    const api = apiWithConfig();
+
+    manifest.register(api);
+    await Promise.resolve();
+
+    expect(api.capabilities).toHaveLength(1);
+    const capability = api.capabilities[0]!;
+    expect(typeof capability.promptBuilder).toBe("function");
+    expect(typeof capability.flushPlanResolver).toBe("function");
+  });
+
+  it("the promptBuilder returns static lines about memory_search / memory_add — no session/query context (sync, no async)", async () => {
+    const api = apiWithConfig();
+    manifest.register(api);
+    await Promise.resolve();
+
+    const lines = api.capabilities[0]!.promptBuilder!({});
+    expect(Array.isArray(lines)).toBe(true);
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines.join(" ")).toMatch(/memory_search/);
+    expect(lines.join(" ")).toMatch(/memory_add/);
+  });
+
+  it("flushPlanResolver returns null — we capture per agent_end, so OpenClaw's compaction-flush turn is redundant", async () => {
+    const api = apiWithConfig();
+    manifest.register(api);
+    await Promise.resolve();
+
+    const plan = api.capabilities[0]!.flushPlanResolver!({});
+    expect(plan).toBeNull();
+  });
+
+  it("each full-mode reload re-registers the capability — OpenClaw's per-load registry must see it every cycle", async () => {
+    const apiA = apiWithConfig();
+    const apiB = apiWithConfig();
+
+    manifest.register(apiA);
+    manifest.register(apiB);
+    await Promise.resolve();
+
+    expect(apiA.capabilities).toHaveLength(1);
+    expect(apiB.capabilities).toHaveLength(1);
+  });
+
+  it("each full-mode call wires hooks/tools/service onto its own api — OpenClaw hot-reload hands a fresh api with an empty registry per agent run, so every call must re-register", async () => {
     const apiA = apiWithConfig();
     const apiB = apiWithConfig();
     const apiC = apiWithConfig();
@@ -255,13 +301,28 @@ describe("register() idempotence (plugin-lifecycle tree)", () => {
     await Promise.resolve();
     await Promise.resolve();
 
+    expect(apiA.handlers.size).toBe(3);
+    expect(apiB.handlers.size).toBe(3);
+    expect(apiC.handlers.size).toBe(3);
+
+    expect(apiA.toolFactories).toHaveLength(1);
+    expect(apiB.toolFactories).toHaveLength(1);
+    expect(apiC.toolFactories).toHaveLength(1);
+
+    expect(apiA.registered).toHaveLength(1);
+    expect(apiB.registered).toHaveLength(1);
+    expect(apiC.registered).toHaveLength(1);
+  });
+
+  it("the server manager is a process-singleton — only one uvicorn lifetime regardless of how many times register() runs", async () => {
+    manifest.register(apiWithConfig());
+    manifest.register(apiWithConfig());
+    manifest.register(apiWithConfig());
+    await Promise.resolve();
+    await Promise.resolve();
+
     expect(gralkorTsMocks.createServerManager).toHaveBeenCalledTimes(1);
     expect(startSpy).not.toHaveBeenCalled();
-    expect(apiA.registered).toHaveLength(1);
-    expect(apiB.registered).toHaveLength(0);
-    expect(apiC.registered).toHaveLength(0);
-    expect(apiB.handlers.size).toBe(0);
-    expect(apiC.toolFactories).toHaveLength(0);
   });
 
   it("returns immediately in non-full modes without constructing a manager or binding hooks/tools", async () => {
@@ -286,7 +347,7 @@ describe("register() idempotence (plugin-lifecycle tree)", () => {
     expect(full.registered).toHaveLength(1);
   });
 
-  it("a failed first call (missing dataDir) leaves the flag unset so a later valid call still registers", async () => {
+  it("a failed call (missing dataDir) leaves the manager slot empty so a later valid call still constructs a manager", async () => {
     const broken = makeApi();
     (broken as unknown as { pluginConfig: unknown }).pluginConfig = {
       agentName: "TestAgent",

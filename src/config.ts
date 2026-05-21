@@ -17,6 +17,13 @@ export interface GralkorPluginConfig {
   openaiApiKey?: string;
   anthropicApiKey?: string;
   groqApiKey?: string;
+  /**
+   * Output-token budget for the server's interpret pipeline on every recall.
+   * Unset → server applies its own default (2000). Raise for wide-recall
+   * workloads where the default truncates and surfaces as
+   * InterpretParseFailed in the server logs. Must be a positive integer.
+   */
+  interpretMaxOutputTokens?: number;
 }
 
 export const defaultConfig = {
@@ -34,6 +41,16 @@ export function resolveConfig(
     );
   }
 
+  if (raw.interpretMaxOutputTokens !== undefined) {
+    const v = raw.interpretMaxOutputTokens;
+    if (typeof v !== "number" || !Number.isInteger(v) || v <= 0) {
+      throw new Error(
+        "openclaw-gralkor pluginConfig.interpretMaxOutputTokens must be a positive integer, got " +
+          JSON.stringify(v),
+      );
+    }
+  }
+
   return {
     agentName,
     search: {
@@ -49,6 +66,7 @@ export function resolveConfig(
     openaiApiKey: raw.openaiApiKey,
     anthropicApiKey: raw.anthropicApiKey,
     groqApiKey: raw.groqApiKey,
+    interpretMaxOutputTokens: raw.interpretMaxOutputTokens,
   };
 }
 

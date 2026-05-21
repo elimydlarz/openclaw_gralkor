@@ -9,7 +9,7 @@ OpenClaw plugin that adapts [Gralkor](https://github.com/elimydlarz/gralkor) —
 - **Per-turn capture.** Each `agent_end` invocation is one turn. The plugin extracts `{user_query, assistant_answer, events}` from the OpenClaw context and `POST /capture`s it. Multiple turns for the same session accumulate in the server's capture buffer; OpenClaw fires `session_end` on idle-rollover (next message after the freshness window expires) or explicit reset (`/new`, `/reset`), and the `session_end` hook here drives `POST /session_end` to flush.
 - **Harness-specific filtering lives here.** The Gralkor server is harness-agnostic — it stores what it receives. This adapter is the only layer that knows OpenClaw's conventions, so it's responsible for (a) skipping `agent_end` events that come from harness-internal sub-agent runs (e.g. `sessionKey === "temp:slug-generator"`, whose prompt embeds an inline dump of the real conversation) and synthetic turns (session-reset meta-prompt starting with `"A new session was started via /new or /reset"`), and (b) stripping harness scaffolding from real user content (`Conversation info (untrusted metadata):` and `Sender (untrusted metadata):` ```json envelope blocks) before it reaches `user_query`. Filter rules are sourced from OpenClaw (`src/hooks/llm-slug-generator.ts`, `src/auto-reply/reply/session-reset-prompt.ts`) — keep them pinned to those files.
 - **Session identity.** `session_id` is OpenClaw's `sessionKey` — required. Missing/blank sessionKey fails loudly; there is no `"default"` bucket. `group_id` is the sanitised `agentId` — per-agent graph partition; agents never see each other's memory. Mapping lives in a module-level Map so concurrent plugin reloads within one process share it.
-- **Mode-gated register().** OpenClaw calls `register(api)` once per `api.registrationMode` it cares about — `"cli-metadata"` to enumerate CLI commands, `"setup-only"` / `"setup-runtime"` for lifecycle phases, `"full"` for actual activation (see OpenClaw's `src/plugins/loader.ts` and the SDK's `defineChannelPluginEntry` in `src/plugin-sdk/core.ts`). This plugin only does work in `"full"`; every other mode returns immediately. Within `"full"`, a `globalThis[Symbol.for("@susulabs/gralkor:registered")]` flag is the backstop in case `"full"` is delivered more than once.
+- **Mode-gated register(), no global de-dup.** OpenClaw calls `register(api)` once per `api.registrationMode` it cares about — `"cli-metadata"` to enumerate CLI commands, `"setup-only"` / `"setup-runtime"` for lifecycle phases, `"full"` for actual activation (see OpenClaw's `src/plugins/loader.ts` and the SDK's `defineChannelPluginEntry` in `src/plugin-sdk/core.ts`). This plugin only does work in `"full"`; every other mode returns immediately. **No process-wide registered-flag.** OpenClaw 2026.5.x hot-reloads the plugin module on every agent run (re-imports `dist/index.js`, hands a fresh `api` instance whose registry is empty) — a `globalThis` symbol guard survives reloads and silently blocks re-registration, leaving the new registry with zero hooks/tools (`openclaw plugins info` then reports `hookCount: 0`). Hook and tool wiring must therefore happen on *every* `"full"` call. Server-manager construction is the one piece that must stay singleton (a second `createServerManager` racing on port 4000 spawns a second uvicorn); idempotency for that lives at the manager-construction layer, not at register's entrypoint.
 - **Recall is harness-injected here, not agentic.** The sibling `jido_gralkor` moved recall under the agent's control (LLM authors a focused `memory_search` query on iteration 1 via `tool_choice` forcing through `Jido.AI.Reasoning.ReAct.RequestTransformer`). OpenClaw's plugin SDK has no equivalent: the `before_prompt_build` result is text-only (`systemPrompt` / `prependContext` / `prependSystemContext` / `appendSystemContext`), `llm_input` / `llm_output` are `void` observation hooks, and no hook returns generation options. The only `tool_choice` references in the SDK live inside the OpenAI realtime WS driver — not plugin-facing. A system-prompt nudge alone is a strictly weaker contract than forcing, so we keep the harness-injected `before_prompt_build` → `prependContext` path for now and accept that the OpenClaw stack and the Jido stack diverge in shape on this point. Revisit if OpenClaw exposes a request-override hook upstream.
 - **Recall is best-effort; capture / session_end still fail-fast.** `before_prompt_build` logs a warning and returns `{ ok: {} }` if recall fails — memory-unavailable should not turn into a user-visible turn failure, and the Vertex-upstream retries live at the google-genai SDK (see `gralkor/TEST_TREES.md › Retry ownership`). `agent_end` and `session_end` still surface Gralkor HTTP errors from `gralkor-ts`'s `GralkorHttpClient` so OpenClaw decides — server-unreachable during capture is a distinct failure class that should not be silently swallowed.
 - **Native indexer.** `before_prompt_build` fires a fire-and-forget scan of the workspace (`MEMORY.md` + `memory/*.md`) and calls `memoryAdd` for new content. Marker-based idempotence keeps re-runs cheap.
@@ -28,14 +28,14 @@ before_prompt_build
   when the hook fires with a sessionKey
     then the session's groupId is registered in the session map (sanitised from agentId)
     then the native indexer is fired fire-and-forget (scans workspace/MEMORY.md + workspace/memory/*.md)
-  when a user query can be extracted from the trailing messages
-    then GralkorClient.recall is called with (groupId, sessionId, query, pluginConfig.agentName)
+  when event.prompt is non-empty (this is the current turn's user input; OpenClaw's SDK splits prompt from conversation history — `PluginHookBeforePromptBuildEvent = { prompt: string; messages: unknown[] }` — and recall must use the current prompt, never the trailing entry of history)
+    then GralkorClient.recall is called with (groupId, sessionId, event.prompt.trim(), pluginConfig.agentName)
     when recall returns { ok: block }
       then block is injected into the prompt as prependContext
     if recall returns { error: _ }
       then the hook logs a warning via console.warn naming the error and returns { ok: {} } — the turn continues without memory context under the retry-ownership doctrine (Vertex-upstream retries live at the google-genai SDK; see `gralkor/TEST_TREES.md › Retry ownership`)
-  when no user query can be extracted (empty/system-only trailing messages)
-    then recall is not called
+  when event.prompt is empty or whitespace-only
+    then recall is not called (session-map registration still happens above)
 ```
 
 ### agent_end hook
@@ -82,8 +82,19 @@ ctxToMessages
     then the first message in the result is the trailing user content as %{role: "user"}
     and the last message is the final assistant content as %{role: "assistant"}
     and each intermediate ctx entry is rendered as a %{role: "behaviour"} message in order,
-      with content shaped for the server's distillation LLM (e.g. "thought: …", "tool NAME ← …",
-      "toolResult: …")
+      with content shaped for the server's distillation LLM:
+        - reasoning content block → "thought: …"
+        - text / output_text content block → "text: …"
+        - toolCall / toolUse / tool_use content block → "tool NAME ← {json-args}"
+          (codex emits "toolCall"; anthropic-style "toolUse"/"tool_use" also accepted)
+        - toolResult / tool_result content block → "tool result → …"
+        - entry with role="toolResult" (codex shape: tool output arrives at message-role level
+          with text blocks inside) → "toolResult: …" (single line, role wins over inner block type)
+      with body cleanup applied to "text:", "toolResult:", and "tool result →":
+        - ANSI SGR escape sequences stripped (terminal stdout shouldn't reach the graph)
+        - body capped at 500 chars; oversized bodies end with "… [truncated]"
+      ("thought:" and tool-call argument JSON are not capped — reasoning summaries are short
+      and function args are bounded by the model's own emission size)
     when an intermediate entry has no useful content
       then no behaviour message is emitted for it
   when the ctx has no trailing user message
@@ -268,6 +279,12 @@ config
       then it is passed through unchanged for `createServerManager` to write into config.yaml
     when resolveConfig is called with api-key fields
       then the keys are passed through unchanged (trimming happens later in buildSecretEnv)
+    when resolveConfig is called without an interpretMaxOutputTokens
+      then the result omits interpretMaxOutputTokens — the GralkorHttpClient constructor then omits it from /recall requests and the server falls back to its 2000-token default
+    when resolveConfig is called with a positive-integer interpretMaxOutputTokens
+      then the value is passed through unchanged for the GralkorHttpClient constructor to forward on every /recall request body
+    if interpretMaxOutputTokens is set to a non-positive integer or a non-integer value
+      then resolveConfig throws (configuration error surfaces at config-load, not as a downstream HTTP failure)
   buildSecretEnv
     when buildSecretEnv is called with no api keys set
       then it returns an empty object
@@ -288,7 +305,7 @@ plugin-lifecycle
       then id is "@susulabs/gralkor" (the npm package name)
       then kind is "memory"
       then tools lists the four tool names (memory_search, memory_add, memory_build_indices, memory_build_communities)
-      then configSchema declares the expected top-level properties (dataDir, workspaceDir, search, test, and the four apiKey fields)
+      then configSchema declares the expected top-level properties (dataDir, workspaceDir, search, test, the four apiKey fields, and the optional interpretMaxOutputTokens)
   openclaw.plugin.json (the static manifest the OpenClaw 2026.5.7+ loader reads at install time)
     when openclaw.plugin.json is loaded as JSON
       then contracts.tools lists the four tool names (memory_search, memory_add, memory_build_indices, memory_build_communities)
@@ -296,18 +313,24 @@ plugin-lifecycle
       then version equals package.json version (publish-npm.sh syncs them)
   when register() is called with api.registrationMode set to anything other than "full" (e.g. "cli-metadata", "setup-only", "setup-runtime")
     then register() returns immediately as a no-op — OpenClaw is enumerating CLI commands or running a non-activation lifecycle phase, not asking us to boot. This plugin exposes no CLI commands, so non-full modes have nothing to register.
-  when register() is called with api.registrationMode === "full" (or absent, for hosts that predate the field) for the first time in the process
-    then the Python server manager is constructed via gralkor-ts and api.registerService({id: "gralkor-server", start, stop}) is registered — OpenClaw 2026.5.7's plugin host drives the lifecycle by calling service.start(serviceContext) for every registered service (see node_modules/openclaw/dist/services-DqAbDrlq.js → startPluginServices); the plugin must NOT also self-start the manager or it spawns two uvicorn processes that race on port 4000
-    then the manager is constructed with wheelRepo parsed from package.json's repository.url via parseGithubRepoSlug — the runtime fetches the falkordblite wheel from https://github.com/${wheelRepo}/releases/download/v${version}/... and the publish script (scripts/publish-clawhub.sh) uploads to that same repo via `gh release`. One source (this field) keeps publish and runtime in lockstep; an empty/non-github URL fails fast at module load.
+  when register() is called with api.registrationMode === "full" (or absent, for hosts that predate the field)
+    then the three hooks (before_prompt_build, agent_end, session_end) are registered on this api instance — every call rewires hooks because OpenClaw 2026.5.x reloads the plugin module on each agent run with a fresh api whose registry is empty; skipping re-registration leaves the new registry hookless
+    then one tool factory is registered on this api instance, exposing four tool definitions: memory_search, memory_add, memory_build_indices, memory_build_communities
+    then api.registerService({id: "gralkor-server", start, stop}) is registered on this api instance — OpenClaw 2026.5.7's plugin host drives the lifecycle by calling service.start(serviceContext) for every registered service (see node_modules/openclaw/dist/services-DqAbDrlq.js → startPluginServices); the plugin must NOT also self-start the manager or it spawns two uvicorn processes that race on port 4000
     then GralkorHttpClient is constructed with baseUrl = GRALKOR_URL (loopback default)
-    then the three hooks (before_prompt_build, agent_end, session_end) are registered with OpenClaw
-    then one tool factory is registered with OpenClaw, exposing four tool definitions: memory_search, memory_add, memory_build_indices, memory_build_communities
-    then a process-wide "registered" flag is set on globalThis (under Symbol.for("@susulabs/gralkor:registered")) as a backstop in case "full" is delivered more than once (e.g. a registry rebuild within one process)
-  when register() is called in "full" mode and the process-wide flag is already set
-    then register() returns immediately as a no-op — no second server manager, no second start(), no second hook/tool/service binding
-    then the hooks, tools, and service bound on the first call remain in force for the process lifetime
+  when register() is called with api.registerMemoryCapability available
+    then api.registerMemoryCapability is called with `{ promptBuilder, flushPlanResolver }` — this declares the plugin as the active memory capability for OpenClaw 2026.5.x+. `openclaw plugins info @susulabs/gralkor` then reports `Shape: memory capability` (instead of `non-capability`), and OpenClaw routes the `plugins.slots.memory` slot through this plugin.
+    then the promptBuilder returns static lines (sync) that brief the agent on `memory_search` and `memory_add` usage; it receives `{ availableTools, citationsMode }` only — no session/agent/query context. Auto-recall by user query is not available through this surface (recall is agent-driven via the `memory_search` tool).
+    then the flushPlanResolver returns null (sync) — opt out of OpenClaw's compaction-flush turn. Per-turn capture lives in the `agent_end` hook; a flush turn at compaction would duplicate the work.
+  when register() is called and api.registerMemoryCapability is absent (older OpenClaw host)
+    then the capability registration is skipped silently — hooks and tools still register, so the plugin remains functional on the prior contract
+  when register() is called and a server manager has not yet been constructed in this process
+    then a fresh server manager is constructed via gralkor-ts and cached in a module-level slot
+    then the manager is constructed with wheelRepo parsed from package.json's repository.url via parseGithubRepoSlug — the runtime fetches the falkordblite wheel from https://github.com/${wheelRepo}/releases/download/v${version}/... and the publish script (scripts/publish-clawhub.sh) uploads to that same repo via `gh release`. One source (this field) keeps publish and runtime in lockstep; an empty/non-github URL fails fast at module load.
+  when register() is called and a server manager already exists in the module-level slot (e.g. OpenClaw is reloading the plugin in the same process)
+    then the cached manager is reused — exactly one uvicorn process per process lifetime, no port-4000 race
   when register() is called in "full" mode with missing dataDir
-    then registerServerService throws synchronously before any service is registered (fail-fast on config misuse) — the process-wide flag is NOT set, so a later register() with a fixed config can succeed
+    then registerServerService throws synchronously before any service is registered (fail-fast on config misuse) and the manager slot is left empty so a later register() with a fixed config can populate it
   when the process receives SIGTERM
     then no client-side flush is needed — the Python server's lifespan shutdown handles buffer flushes
 ```

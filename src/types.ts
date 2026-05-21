@@ -40,4 +40,27 @@ export interface MemoryPluginApi {
     factory: (ctx: any) => any | any[] | null,
     opts?: { names?: string[] },
   ): void;
+  /**
+   * Declare this plugin as the active memory capability. OpenClaw 2026.5.x
+   * routes the `plugins.slots.memory` slot owner through this surface — once
+   * called, `openclaw plugins info` reports `Shape: memory capability`. All
+   * fields are optional; an empty object is enough for slot ownership.
+   *
+   * `promptBuilder` is invoked synchronously during system-prompt assembly
+   * with `{ availableTools, citationsMode }` and returns static lines (no
+   * session/query context — recall is agent-driven via `memory_search`).
+   * `flushPlanResolver` is invoked synchronously at compaction time; return
+   * `null` to opt out of OpenClaw's compaction-flush turn (we capture per
+   * agent_end hook, so the flush turn would be redundant).
+   */
+  registerMemoryCapability?(capability: {
+    promptBuilder?: (params: {
+      availableTools?: readonly string[];
+      citationsMode?: string;
+    }) => readonly string[];
+    flushPlanResolver?: (params: {
+      cfg?: unknown;
+      nowMs?: number;
+    }) => Record<string, unknown> | null;
+  }): void;
 }

@@ -16,6 +16,8 @@ import {
   registerTools,
   registerHooks,
   registerServerService,
+  registerMemoryCapability,
+  resetServerManagerForTests,
 } from "./register.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -48,11 +50,8 @@ export function parseGithubRepoSlug(repositoryUrl: string): string {
 
 const wheelRepo = parseGithubRepoSlug(pkgJson.repository?.url ?? "");
 
-const REGISTERED = Symbol.for("@susulabs/gralkor:registered");
-type RegisteredSlot = { [REGISTERED]?: boolean };
-
 export function resetRegistrationForTests(): void {
-  (globalThis as RegisteredSlot)[REGISTERED] = false;
+  resetServerManagerForTests();
 }
 
 export const id = "@susulabs/gralkor";
@@ -118,14 +117,16 @@ export const configSchema = {
       type: "string" as const,
       description: "Groq API key for Groq-hosted LLM extraction",
     },
+    interpretMaxOutputTokens: {
+      type: "number" as const,
+      description:
+        "Optional positive integer. Output-token budget the server passes to its interpret pipeline on every recall. Unset → server default (2000). Raise for wide-recall workloads where the default truncates and surfaces as InterpretParseFailed in the server logs.",
+    },
   },
 };
 
 export function register(api: MemoryPluginApi): void {
   if (api.registrationMode && api.registrationMode !== "full") return;
-
-  const slot = globalThis as RegisteredSlot;
-  if (slot[REGISTERED]) return;
 
   try {
     const config = resolveConfig(
@@ -157,13 +158,15 @@ export function register(api: MemoryPluginApi): void {
         ` dataDir=${config.dataDir ?? "default"}`,
     );
 
-    const client = new GralkorHttpClient({ baseUrl: GRALKOR_URL });
+    const client = new GralkorHttpClient({
+      baseUrl: GRALKOR_URL,
+      interpretMaxOutputTokens: config.interpretMaxOutputTokens,
+    });
 
     registerTools(api, client, config);
     registerHooks(api, client, config);
     registerServerService(api, config, version, wheelRepo);
-
-    slot[REGISTERED] = true;
+    registerMemoryCapability(api);
   } catch (err) {
     console.error(
       `[gralkor] boot: register() failed:`,

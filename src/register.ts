@@ -129,14 +129,10 @@ export function registerHooks(
 ): void {
   api.on(
     "before_prompt_build",
-    async (
-      event: { messages?: { role: string; content: unknown }[] },
-      ctx: HookCtx,
-    ) => {
+    async (event: { prompt?: string }, ctx: HookCtx) => {
       const sessionKey = requireSessionKey(ctx.sessionKey);
       const agentId = ctx.agentId ?? sessionKey;
 
-      // Fire-and-forget native indexer — doesn't block the prompt build.
       const workspaceDir = ctx.workspaceDir ?? config.workspaceDir;
       if (workspaceDir) {
         void runNativeIndexer(client, workspaceDir, sanitizeGroupId(agentId)).catch((err) => {
@@ -148,8 +144,7 @@ export function registerHooks(
         sessionKey,
         agentId,
         agentName: config.agentName,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        messages: (event.messages ?? []) as any,
+        prompt: event.prompt ?? "",
       });
       if ("error" in result) throw new Error(JSON.stringify(result.error));
       return result.ok;
@@ -180,6 +175,37 @@ export function registerHooks(
   });
 }
 
+let cachedManager: ServerManager | null = null;
+
+export function resetServerManagerForTests(): void {
+  cachedManager = null;
+}
+
+const MEMORY_TOOL_PROMPT_LINES = [
+  "Memory is stored in a Graphiti knowledge graph backed by FalkorDB.",
+  "Use `memory_search` to recall prior facts before answering questions about past decisions, dates, people, preferences, or todos.",
+  "Use `memory_add` to store new insights, reflections, or durable decisions you want available in future sessions.",
+] as const;
+
+/**
+ * Declares this plugin as the active memory capability for OpenClaw 2026.5.x+.
+ * Once registered, `openclaw plugins info` reports `Shape: memory capability`
+ * and OpenClaw routes the `plugins.slots.memory` slot through this plugin.
+ *
+ * The capability is intentionally minimal — capture/recall is hook+tool-driven
+ * (see registerHooks / registerTools). The promptBuilder only contributes the
+ * static usage hints that the agent reads alongside the tool definitions, and
+ * flushPlanResolver opts out of OpenClaw's compaction-flush turn (we capture
+ * per agent_end, so a follow-up flush turn would duplicate the work).
+ */
+export function registerMemoryCapability(api: MemoryPluginApi): void {
+  if (typeof api.registerMemoryCapability !== "function") return;
+  api.registerMemoryCapability({
+    promptBuilder: () => MEMORY_TOOL_PROMPT_LINES,
+    flushPlanResolver: () => null,
+  });
+}
+
 export function registerServerService(
   api: MemoryPluginApi,
   config: GralkorPluginConfig,
@@ -192,9 +218,12 @@ export function registerServerService(
     );
   }
 
-  // serverDir defaults to the bundled Python server shipped inside
-  // @susulabs/gralkor — no override needed here.
-  const manager = createServerManager({
+  // OpenClaw 2026.5.x hot-reloads the plugin module on every agent run; the
+  // hook/tool/service bindings must happen on each load (the new registry is
+  // empty), but the underlying Python uvicorn process must be a singleton
+  // for the process lifetime. Module-level slot achieves that — the slot
+  // clears when the module is re-imported in a new process, never within one.
+  const manager = (cachedManager ??= createServerManager({
     dataDir: config.dataDir,
     port: 4000,
     version,
@@ -204,7 +233,7 @@ export function registerServerService(
     embedderConfig: config.embedder,
     ontologyConfig: config.ontology,
     test: config.test,
-  });
+  }));
 
   api.registerService({
     id: "gralkor-server",

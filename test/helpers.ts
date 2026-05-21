@@ -10,16 +10,22 @@ import type { MemoryPluginApi } from "../src/types.js";
  */
 export type HookHandler = (event: unknown, ctx: unknown) => Promise<unknown>;
 
+export type MemoryCapabilityArg = Parameters<
+  NonNullable<MemoryPluginApi["registerMemoryCapability"]>
+>[0];
+
 export type TestApi = MemoryPluginApi & {
   registered: { id: string; start: () => unknown; stop: () => unknown }[];
   handlers: Map<string, HookHandler>;
   toolFactories: ((ctx: unknown) => unknown)[];
+  capabilities: MemoryCapabilityArg[];
 };
 
 export function makeApi(): TestApi {
   const registered: { id: string; start: () => unknown; stop: () => unknown }[] = [];
   const handlers = new Map<string, HookHandler>();
   const toolFactories: ((ctx: unknown) => unknown)[] = [];
+  const capabilities: MemoryCapabilityArg[] = [];
   return {
     on: vi.fn((event: string, handler: HookHandler) => {
       handlers.set(event, handler);
@@ -31,9 +37,13 @@ export function makeApi(): TestApi {
     registerService: vi.fn((svc) => {
       registered.push(svc);
     }),
+    registerMemoryCapability: vi.fn((capability: MemoryCapabilityArg) => {
+      capabilities.push(capability);
+    }),
     registered,
     handlers,
     toolFactories,
+    capabilities,
   } as unknown as TestApi;
 }
 

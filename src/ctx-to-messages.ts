@@ -77,12 +77,26 @@ export function textFromContent(content: string | ContentBlock[]): string {
     .join("");
 }
 
+const ANSI_RE = /\x1B\[[0-?]*[ -/]*[@-~]/g;
+const MAX_BEHAVIOUR_BODY_CHARS = 500;
+
+function cleanBody(text: string): string {
+  const stripped = text.replace(ANSI_RE, "").trim();
+  if (stripped.length <= MAX_BEHAVIOUR_BODY_CHARS) return stripped;
+  return `${stripped.slice(0, MAX_BEHAVIOUR_BODY_CHARS)}… [truncated]`;
+}
+
 /**
  * Render a single intermediate ctx message as a `"behaviour"` Message body.
  * Returns `null` for entries with no useful content (so the caller can drop
  * them entirely rather than emit empty behaviour messages).
  */
 function renderBehaviour(entry: MessageEntry): string | null {
+  if (entry.role === "toolResult") {
+    const body = cleanBody(textFromContent(entry.content));
+    return body === "" ? null : `toolResult: ${body}`;
+  }
+
   if (typeof entry.content === "string") {
     const trimmed = entry.content.trim();
     return trimmed === "" ? null : `${entry.role}: ${trimmed}`;
@@ -103,17 +117,19 @@ function renderBlock(block: ContentBlock): string | null {
     return t === "" ? null : `thought: ${t}`;
   }
   if ((block.type === "text" || block.type === "output_text") && typeof block.text === "string") {
-    const t = block.text.trim();
-    return t === "" ? null : `text: ${t}`;
+    const body = cleanBody(block.text);
+    return body === "" ? null : `text: ${body}`;
   }
-  if (block.type === "toolUse" || block.type === "tool_use") {
+  if (block.type === "toolCall" || block.type === "toolUse" || block.type === "tool_use") {
     const name = typeof block.name === "string" ? block.name : "tool";
-    const input = "input" in block ? JSON.stringify(block.input) : "";
-    return `tool ${name}${input ? ` ← ${input}` : ""}`;
+    const argsField =
+      "arguments" in block ? block.arguments : "input" in block ? block.input : undefined;
+    const argsStr = argsField === undefined ? "" : JSON.stringify(argsField);
+    return `tool ${name}${argsStr ? ` ← ${argsStr}` : ""}`;
   }
   if (block.type === "toolResult" || block.type === "tool_result") {
     const text = typeof block.text === "string" ? block.text : JSON.stringify(block);
-    return `tool result → ${text}`;
+    return `tool result → ${cleanBody(text)}`;
   }
   return null;
 }
