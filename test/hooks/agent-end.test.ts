@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { GralkorInMemoryClient } from "@susulabs/gralkor-ts/testing";
+import { GralkorInMemoryClient } from "../../src/gralkor/testing.js";
 import { runAgentEnd } from "../../src/hooks/agent-end.js";
 import { setSessionGroup, resetSessionMap } from "../../src/session-map.js";
 import type { MessageEntry } from "../../src/ctx-to-messages.js";

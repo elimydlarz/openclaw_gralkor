@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { GralkorInMemoryClient } from "@susulabs/gralkor-ts/testing";
+import { GralkorInMemoryClient } from "../../src/gralkor/testing.js";
 import { runMemoryBuildIndices } from "../../src/tools/memory-build-indices.js";
 
 describe("memory_build_indices tool", () => {

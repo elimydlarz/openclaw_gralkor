@@ -6,7 +6,7 @@ import {
   GRALKOR_URL,
   type GralkorClient,
   type ServerManager,
-} from "@susulabs/gralkor-ts";
+} from "./gralkor/index.js";
 import { buildSecretEnv, type GralkorPluginConfig } from "./config.js";
 import type { MemoryPluginApi } from "./types.js";
 import { runMemorySearch } from "./tools/memory-search.js";

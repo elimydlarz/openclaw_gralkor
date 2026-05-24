@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { GralkorInMemoryClient } from "@susulabs/gralkor-ts/testing";
+import { GralkorInMemoryClient } from "../../src/gralkor/testing.js";
 import { runBeforePromptBuild } from "../../src/hooks/before-prompt-build.js";
 import {
   getSessionGroup,

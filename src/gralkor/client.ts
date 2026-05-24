@@ -1,0 +1,84 @@
+/**
+ * Port for talking to a Gralkor backend from TypeScript.
+ *
+ * Operations — recall, capture, endSession, memoryAdd, healthCheck,
+ * buildIndices, buildCommunities. Recoverable failures surface as
+ * `{ error: reason }` so callers can decide how to fail open.
+ * Unrecoverable misuse (blank session id, missing base URL, etc.) throws.
+ *
+ * Construct the adapter you want in your composition root:
+ *
+ * ```ts
+ * import { GralkorHttpClient } from "@susulabs/gralkor";
+ * const client = new GralkorHttpClient({ baseUrl: "http://127.0.0.1:4000" });
+ * ```
+ *
+ * In tests, swap for the in-memory twin from "@susulabs/gralkor/testing".
+ */
+
+export type Result<T, E = unknown> = { ok: T } | { error: E };
+
+export function isOk<T, E>(r: Result<T, E>): r is { ok: T } {
+  return "ok" in r;
+}
+
+export function isErr<T, E>(r: Result<T, E>): r is { error: E } {
+  return "error" in r;
+}
+
+export type Role = "user" | "assistant" | "behaviour";
+
+export interface Message {
+  role: Role;
+  content: string;
+}
+
+export interface GralkorClient {
+  /**
+   * Returns the memory block for this session.
+   * `maxResults` overrides the server's default (10); omit to use the server default.
+   */
+  recall(
+    groupId: string,
+    sessionId: string | null,
+    query: string,
+    agentName: string,
+    maxResults?: number,
+  ): Promise<Result<string>>;
+
+  /** Buffers a turn on the server; the server flushes only on explicit endSession or lifespan shutdown. */
+  capture(
+    sessionId: string,
+    groupId: string,
+    agentName: string,
+    messages: Message[],
+  ): Promise<Result<true>>;
+
+  /** Flushes the session's buffer now; returns immediately (server handles the write async). */
+  endSession(sessionId: string): Promise<Result<true>>;
+
+  /** Ingests a single piece of content; server does entity/edge extraction. */
+  memoryAdd(
+    groupId: string,
+    content: string,
+    sourceDescription: string | null,
+  ): Promise<Result<true>>;
+
+  /** Liveness probe. */
+  healthCheck(): Promise<Result<true>>;
+
+  /** Admin: rebuild graph search indices. Idempotent; run after schema changes. */
+  buildIndices(): Promise<Result<{ status: string }>>;
+
+  /** Admin: detect and build entity communities for a group. Improves search quality. */
+  buildCommunities(groupId: string): Promise<Result<{ communities: number; edges: number }>>;
+}
+
+/**
+ * Hyphens → underscores. Required because FalkorDB's RediSearch syntax
+ * doesn't accept hyphens in group ids. Apply at the edge (once, when the
+ * caller hands us a principal identifier).
+ */
+export function sanitizeGroupId(id: string): string {
+  return id.replace(/-/g, "_");
+}

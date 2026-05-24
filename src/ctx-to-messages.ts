@@ -1,4 +1,4 @@
-import type { Message } from "@susulabs/gralkor-ts";
+import type { Message } from "./gralkor/index.js";
 
 interface ContentBlock {
   type: string;

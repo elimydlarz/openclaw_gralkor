@@ -5,7 +5,7 @@ import {
   GralkorHttpClient,
   GRALKOR_URL,
   validateOntologyConfig,
-} from "@susulabs/gralkor-ts";
+} from "./gralkor/index.js";
 import {
   resolveConfig,
   defaultConfig,
@@ -54,7 +54,7 @@ export function resetRegistrationForTests(): void {
   resetServerManagerForTests();
 }
 
-export const id = "@susulabs/gralkor";
+export const id = "@gralkor/openclaw";
 export const name = "Gralkor Memory (OpenClaw)";
 export const description =
   "Persistent, temporally-aware memory via Graphiti knowledge graphs and FalkorDB";

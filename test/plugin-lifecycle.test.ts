@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { ServerManager } from "@susulabs/gralkor-ts";
+import type { ServerManager } from "../src/gralkor/index.js";
 import { registerServerService } from "../src/register.js";
 import * as manifest from "../src/index.js";
 import { makeApi, makeConfig, type TestApi } from "./helpers.js";
@@ -15,8 +15,8 @@ const gralkorTsMocks = vi.hoisted(() => ({
   GRALKOR_URL: "http://127.0.0.1:4000",
 }));
 
-vi.mock("@susulabs/gralkor-ts", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@susulabs/gralkor-ts")>();
+vi.mock("../src/gralkor/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/gralkor/index.js")>();
   return {
     ...actual,
     createServerManager: gralkorTsMocks.createServerManager,
@@ -27,8 +27,8 @@ vi.mock("@susulabs/gralkor-ts", async (importOriginal) => {
 });
 
 describe("plugin manifest exports", () => {
-  it("id is the npm package name '@susulabs/gralkor'", () => {
-    expect(manifest.id).toBe("@susulabs/gralkor");
+  it("id is the npm package name '@gralkor/openclaw'", () => {
+    expect(manifest.id).toBe("@gralkor/openclaw");
   });
 
   it("kind is 'memory'", () => {

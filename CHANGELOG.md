@@ -1,5 +1,24 @@
 # Changelog
 
+## [4.0.1] - 2026-05-21
+
+### Fixed
+- Bundled Python server path resolution. 4.0.0 shipped with `server/server/` (a nested directory created during the merge from `gralkor/ts/server/`) and `server-manager.ts`'s `bundledServerDir()` resolving to `dist/server/` (a non-existent path post-merge). Result: any consumer that actually spawned the server got an immediate path-not-found failure. 4.0.1 ships the server flat at `<pkg>/server/` and `bundledServerDir()` resolves to `../../server` from `dist/gralkor/server-manager.js`. Consumers on 4.0.0 should bump to 4.0.1.
+
+### Changed
+- `.clawhubignore` rewritten to whitelist the full `server/` runtime tree (including `pipelines/`) and explicitly exclude `server/wheels/` (the arm64 falkordblite wheel still exceeds ClawHub's 20 MB upload limit; the runtime downloads it from GitHub Releases on first start). 4.0.0 was never on ClawHub — first ClawHub publish is 4.0.1.
+
+## [4.0.0] - 2026-05-21
+
+### Changed
+- **BREAKING.** Package renamed from `@susulabs/gralkor` to `@gralkor/openclaw`. The legacy `@susulabs/gralkor` and `@susulabs/gralkor-ts` packages are deprecated on npm and point here. Consumers must update their install command: `openclaw plugins install @gralkor/openclaw@latest`. OpenClaw config keys that reference the plugin by id must change too: `plugins.entries["@gralkor/openclaw"].enabled`, `plugins.slots.memory = "@gralkor/openclaw"`, `plugins.config["@gralkor/openclaw"]`.
+- **BREAKING.** Plugin runtime id changed from `@susulabs/gralkor` to `@gralkor/openclaw` to match the new package name. ClawHub locks the runtime id at first publish; this version is the first publish under the new id.
+- Absorbed the former `@susulabs/gralkor-ts` npm package. The `GralkorClient` port, `GralkorHttpClient`, `GralkorInMemoryClient`, `waitForHealth`, `createServerManager`, `sanitizeGroupId`, and the Python FastAPI server are now shipped inside this package (under `src/gralkor/` and `server/`). The legacy `@susulabs/gralkor-ts` package is deprecated on npm and points here.
+
+### Preserved (no consumer-visible behaviour change)
+- All hooks (`before_prompt_build`, `agent_end`, `session_end`), tools (`memory_search`, `memory_add`, `memory_build_indices`, `memory_build_communities`), the memory capability registration, the native indexer, the session map, and the bundled Python server behave exactly as in 2.2.0.
+- Config shape (`pluginConfig`) is unchanged.
+
 ## [2.2.0] - 2026-05-21
 
 ### Added

@@ -12,16 +12,20 @@
 !dist/
 !dist/**
 
-# Server: only the runtime files. The arm64 wheel is NOT shipped via ClawHub
-# (24 MB > ClawHub's 20 MB upload limit). server-manager.ts downloads it from
-# GitHub Releases on first start when the install dir has no bundled wheels.
+# Server: include the whole runtime tree but exclude the arm64 wheel
+# (24 MB > ClawHub's 20 MB upload limit). server-manager.ts downloads the
+# wheel from GitHub Releases on first start when the install dir has no
+# bundled wheels.
 !server/
-server/*
-!server/Dockerfile
-!server/main.py
-!server/pyproject.toml
-!server/uv.lock
-!server/requirements.txt
+!server/**
+server/wheels/
+server/wheels/**
+server/__pycache__/
+server/__pycache__/**
+server/.venv/
+server/.venv/**
+server/.pytest_cache/
+server/.pytest_cache/**
 
 # Top-level runtime config
 !docker-compose.yml

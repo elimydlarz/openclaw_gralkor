@@ -1,0 +1,197 @@
+import type { GralkorClient, Message, Result } from "../client.js";
+
+export interface GralkorHttpClientOptions {
+  /** Base URL of the Gralkor server (e.g. `http://127.0.0.1:4000`). No trailing slash required. */
+  baseUrl: string;
+  /** Override fetch, e.g. for tests. Defaults to global fetch. */
+  fetch?: typeof fetch;
+  /**
+   * Output-token budget the server passes to its interpret pipeline on every
+   * `/recall`. When omitted, the server applies its own default (2000). Raise
+   * for wide-recall workloads where the default truncates and surfaces as
+   * `InterpretParseFailed` server-side. Must be a positive integer.
+   */
+  interpretMaxOutputTokens?: number;
+}
+
+/**
+ * HTTP adapter for {@link GralkorClient}.
+ *
+ * No auth: the server binds to loopback and expects its consumer to supervise it.
+ * No retries at this layer: non-2xx responses and transport errors surface immediately.
+ * See `gralkor/TEST_TREES.md` > Retry ownership — 429 retry lives inside the
+ * server's `/recall` handler; no layer above it retries this class.
+ *
+ * Per-endpoint timeouts (milliseconds), calibrated to the workload:
+ *
+ *   - `/health`                — 2 000
+ *   - `/recall`                — 12 000 (matches the server's `/recall` deadline; tight — a server 504 may race the transport, revisit if it bites)
+ *   - `/capture`               — 5 000
+ *   - `/session_end`           — 5 000
+ *   - `/tools/memory_add`      — 60 000 (Graphiti extraction is slow)
+ *   - `/build-indices`         — none (admin; minutes-to-hours on large graphs)
+ *   - `/build-communities`     — none (admin; minutes-to-hours on large graphs)
+ *
+ * Blank session ids throw `Error` — Gralkor requires a non-blank session_id.
+ */
+export class GralkorHttpClient implements GralkorClient {
+  private readonly baseUrl: string;
+  private readonly fetchImpl: typeof fetch;
+  private readonly interpretMaxOutputTokens: number | undefined;
+
+  constructor(options: GralkorHttpClientOptions) {
+    if (!options.baseUrl) throw new Error("baseUrl is required");
+    if (options.interpretMaxOutputTokens !== undefined) {
+      requirePositiveInteger(
+        "interpretMaxOutputTokens",
+        options.interpretMaxOutputTokens,
+      );
+    }
+    this.baseUrl = options.baseUrl.replace(/\/+$/, "");
+    this.fetchImpl = options.fetch ?? fetch;
+    this.interpretMaxOutputTokens = options.interpretMaxOutputTokens;
+  }
+
+  async recall(
+    groupId: string,
+    sessionId: string | null,
+    query: string,
+    agentName: string,
+    maxResults?: number,
+  ): Promise<Result<string>> {
+    requireAgentName(agentName);
+    const body: Record<string, unknown> = { group_id: groupId, query, agent_name: agentName };
+    if (typeof sessionId === "string") body.session_id = sessionId;
+    if (maxResults !== undefined) body.max_results = maxResults;
+    if (this.interpretMaxOutputTokens !== undefined) {
+      body.interpret_max_output_tokens = this.interpretMaxOutputTokens;
+    }
+    const res = await this.post("/recall", body, 12_000);
+    if ("error" in res) return res;
+    const respBody = res.ok as { memory_block?: string };
+    if (respBody.memory_block === undefined) return { error: { kind: "unexpected_body", body: respBody } };
+    return { ok: respBody.memory_block };
+  }
+
+  async capture(
+    sessionId: string,
+    groupId: string,
+    agentName: string,
+    messages: Message[],
+  ): Promise<Result<true>> {
+    requireSessionId(sessionId);
+    requireAgentName(agentName);
+    const res = await this.post(
+      "/capture",
+      { session_id: sessionId, group_id: groupId, agent_name: agentName, messages },
+      5_000,
+    );
+    return "error" in res ? res : { ok: true };
+  }
+
+  async endSession(sessionId: string): Promise<Result<true>> {
+    requireSessionId(sessionId);
+    const res = await this.post("/session_end", { session_id: sessionId }, 5_000);
+    return "error" in res ? res : { ok: true };
+  }
+
+  async memoryAdd(
+    groupId: string,
+    content: string,
+    sourceDescription: string | null,
+  ): Promise<Result<true>> {
+    const body: Record<string, unknown> = { group_id: groupId, content };
+    if (sourceDescription !== null) body.source_description = sourceDescription;
+    const res = await this.post("/tools/memory_add", body, 60_000);
+    return "error" in res ? res : { ok: true };
+  }
+
+  async healthCheck(): Promise<Result<true>> {
+    const res = await this.request("GET", "/health", undefined, 2_000);
+    return "error" in res ? res : { ok: true };
+  }
+
+  async buildIndices(): Promise<Result<{ status: string }>> {
+    const res = await this.post("/build-indices", {}, undefined);
+    if ("error" in res) return res;
+    const body = res.ok as { status?: string };
+    if (typeof body.status !== "string") return { error: { kind: "unexpected_body", body } };
+    return { ok: { status: body.status } };
+  }
+
+  async buildCommunities(
+    groupId: string,
+  ): Promise<Result<{ communities: number; edges: number }>> {
+    const res = await this.post("/build-communities", { group_id: groupId }, undefined);
+    if ("error" in res) return res;
+    const body = res.ok as { communities?: number; edges?: number };
+    if (typeof body.communities !== "number" || typeof body.edges !== "number") {
+      return { error: { kind: "unexpected_body", body } };
+    }
+    return { ok: { communities: body.communities, edges: body.edges } };
+  }
+
+  private post(path: string, body: unknown, timeoutMs: number | undefined): Promise<Result<unknown>> {
+    return this.request("POST", path, body, timeoutMs);
+  }
+
+  private async request(
+    method: "GET" | "POST",
+    path: string,
+    body: unknown | undefined,
+    timeoutMs: number | undefined,
+  ): Promise<Result<unknown>> {
+    const controller = new AbortController();
+    const timer =
+      timeoutMs === undefined ? null : setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await this.fetchImpl(`${this.baseUrl}${path}`, {
+        method,
+        headers: body !== undefined ? { "content-type": "application/json" } : undefined,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
+      });
+
+      if (res.status >= 200 && res.status < 300) {
+        const text = await res.text();
+        if (text === "") return { ok: null };
+        try {
+          return { ok: JSON.parse(text) };
+        } catch {
+          return { ok: text };
+        }
+      }
+
+      const errBody = await res.text().catch(() => "");
+      return { error: { kind: "http_status", status: res.status, body: errBody } };
+    } catch (err) {
+      return {
+        error: {
+          kind: "network",
+          cause: err instanceof Error ? err.message : String(err),
+        },
+      };
+    } finally {
+      if (timer !== null) clearTimeout(timer);
+    }
+  }
+}
+
+function requireSessionId(id: string): void {
+  if (typeof id !== "string" || id === "") {
+    throw new Error("session_id must be a non-blank string");
+  }
+}
+
+function requireAgentName(name: string): void {
+  if (typeof name !== "string" || name.trim() === "") {
+    throw new Error("agent_name must be a non-blank string");
+  }
+}
+
+function requirePositiveInteger(field: string, value: unknown): void {
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    throw new Error(`${field} must be a positive integer, got ${String(value)}`);
+  }
+}

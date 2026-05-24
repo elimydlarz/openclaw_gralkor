@@ -2,7 +2,7 @@ import {
   type ModelConfig,
   type OntologyConfig,
   validateOntologyConfig as libValidate,
-} from "@susulabs/gralkor-ts";
+} from "./gralkor/index.js";
 
 export interface GralkorPluginConfig {
   agentName: string;

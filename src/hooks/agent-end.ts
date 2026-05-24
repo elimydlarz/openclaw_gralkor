@@ -1,4 +1,4 @@
-import type { GralkorClient, Result } from "@susulabs/gralkor-ts";
+import type { GralkorClient, Result } from "../gralkor/index.js";
 import { ctxToMessages, type MessageEntry } from "../ctx-to-messages.js";
 import { getSessionGroup } from "../session-map.js";
 

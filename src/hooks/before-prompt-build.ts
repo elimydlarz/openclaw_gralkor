@@ -1,4 +1,4 @@
-import { sanitizeGroupId, type GralkorClient, type Result } from "@susulabs/gralkor-ts";
+import { sanitizeGroupId, type GralkorClient, type Result } from "../gralkor/index.js";
 import { setSessionGroup } from "../session-map.js";
 
 export interface BeforePromptBuildCtx {
