@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.0.2] - 2026-05-30
+
+### Changed
+- The Gralkor TypeScript adapter (`GralkorClient`, `GralkorHttpClient`, `GralkorInMemoryClient`, `waitForHealth`, `createServerManager`, config helpers) is now imported from the in-tree `src/gralkor/` instead of the deprecated `@susulabs/gralkor-ts` package. The plugin is fully self-contained — installing `@gralkor/openclaw` pulls the adapter and the bundled Python server with no external Gralkor dependency. No change to tools, hooks, or config shape.
+
+### Fixed
+- `src/index.ts` runtime `export const id` corrected from the stale `@susulabs/gralkor` to `@gralkor/openclaw`, matching the manifest's locked runtime plugin id. The two previously disagreed, which could surface the plugin under the wrong id to code reading the runtime export.
+
 ## [4.0.1] - 2026-05-21
 
 ### Fixed

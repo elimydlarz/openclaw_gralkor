@@ -12,14 +12,14 @@
 !dist/
 !dist/**
 
-# Server: include the whole runtime tree but exclude the arm64 wheel
-# (24 MB > ClawHub's 20 MB upload limit). server-manager.ts downloads the
-# wheel from GitHub Releases on first start when the install dir has no
-# bundled wheels.
+# Server: include the whole runtime tree. The arm64 wheel must NOT ship here
+# (24 MB > ClawHub's 20 MB limit). NOTE: clawhub CLI 0.12.3 does not honour
+# exclude/subtract patterns under a re-included dir, so the wheel is kept out of
+# the upload by removing it from disk before `clawhub package publish` (see
+# scripts/publish-clawhub.sh), not by an ignore rule. server-manager.ts
+# downloads the wheel from GitHub Releases on first start.
 !server/
 !server/**
-server/wheels/
-server/wheels/**
 server/__pycache__/
 server/__pycache__/**
 server/.venv/

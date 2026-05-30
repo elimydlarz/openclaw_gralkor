@@ -109,6 +109,14 @@ process.stdout.write(m[1] + '/' + m[2]);
       exit 1
     fi
     echo "Wheel URL verified (HTTP 200)."
+
+    # Remove the wheel from disk before the ClawHub upload. clawhub CLI 0.12.3
+    # does not honour exclude patterns in .clawhubignore, so a wheel left in
+    # server/wheels/ ships in the package and trips ClawHub's 20 MB limit. The
+    # wheel is now confirmed reachable on GitHub Releases (verified above) and
+    # server-manager.ts downloads it from there on first start — so it must not
+    # be in the ClawHub tarball.
+    rm -rf server/wheels
   fi
 
   clawhub_log=$(mktemp)
