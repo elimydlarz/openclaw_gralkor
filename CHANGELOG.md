@@ -1,5 +1,10 @@
 # Changelog
 
+## [4.0.3] - 2026-05-31
+
+### Fixed
+- `memory_search` and `memory_add` now resolve to executors instead of "tool not found" under OpenClaw 2026.5.7. The plugin's `register()` previously bound tools only in `full` registration mode, but 2026.5.7 builds the agent's tool-dispatch map in a separate `tool-discovery` pass — so the tools never entered the map even though the server booted and auto-recall fired. Registration now wires tools, hooks, and the memory capability in all capability-handler modes (`full`, `discovery`, `tool-discovery`); the bundled Python server is still started only in `full`.
+
 ## [4.0.2] - 2026-05-30
 
 ### Changed
