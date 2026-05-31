@@ -274,8 +274,15 @@ plugin-lifecycle (src: src/index.ts; unit: test/plugin-lifecycle.test.ts)
     when openclaw.plugin.json is loaded as JSON
       then contracts.tools lists the four tool names (memory_search, memory_add, memory_build_indices, memory_build_communities)
       then version equals package.json version (publish-npm.sh syncs them)
-  when register() is called with api.registrationMode set to anything other than "full" (e.g. "cli-metadata", "setup-only", "setup-runtime")
-    then register() returns immediately as a no-op
+  when register() is called in a metadata-only mode (cli-metadata, setup-only, setup-runtime — modes where OpenClaw exposes no capability handlers on the api)
+    then register() returns immediately as a no-op (no tools, hooks, capability, or server service bound, no manager constructed)
+  when register() is called in a tool-discovery or discovery mode (OpenClaw's capability-resolution pass that builds the agent's tool-dispatch map — a separate api instance from the full activation pass)
+    then one tool factory is registered on this api instance, exposing four tool definitions: memory_search, memory_add, memory_build_indices, memory_build_communities (so the model's memory_search / memory_add calls resolve to an executor instead of "tool not found")
+    then the three hooks (before_prompt_build, agent_end, session_end) are registered on this api instance
+    then the memory capability is registered (when api.registerMemoryCapability is available) so the pass reports Shape: memory capability
+    then no server manager is constructed and api.registerService is not called — the uvicorn singleton belongs to the full activation pass, not a discovery pass
+    when dataDir is unset
+      then registration still succeeds — dataDir configures the server, which a discovery pass never starts
   when register() is called with api.registrationMode === "full" (or absent, for hosts that predate the field)
     then the three hooks (before_prompt_build, agent_end, session_end) are registered on this api instance
     then one tool factory is registered on this api instance, exposing four tool definitions: memory_search, memory_add, memory_build_indices, memory_build_communities

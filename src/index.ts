@@ -11,7 +11,7 @@ import {
   defaultConfig,
   type GralkorPluginConfig,
 } from "./config.js";
-import type { MemoryPluginApi } from "./types.js";
+import type { MemoryPluginApi, RegistrationMode } from "./types.js";
 import {
   registerTools,
   registerHooks,
@@ -125,8 +125,15 @@ export const configSchema = {
   },
 };
 
+const CAPABILITY_REGISTRATION_MODES: ReadonlySet<RegistrationMode> = new Set([
+  "full",
+  "discovery",
+  "tool-discovery",
+]);
+
 export function register(api: MemoryPluginApi): void {
-  if (api.registrationMode && api.registrationMode !== "full") return;
+  const mode: RegistrationMode = api.registrationMode ?? "full";
+  if (!CAPABILITY_REGISTRATION_MODES.has(mode)) return;
 
   try {
     const config = resolveConfig(
@@ -165,8 +172,10 @@ export function register(api: MemoryPluginApi): void {
 
     registerTools(api, client, config);
     registerHooks(api, client, config);
-    registerServerService(api, config, version, wheelRepo);
     registerMemoryCapability(api);
+    if (mode === "full") {
+      registerServerService(api, config, version, wheelRepo);
+    }
   } catch (err) {
     console.error(
       `[gralkor] boot: register() failed:`,

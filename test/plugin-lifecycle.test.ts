@@ -325,29 +325,100 @@ describe("register() lifecycle (plugin-lifecycle tree)", () => {
     expect(startSpy).not.toHaveBeenCalled();
   });
 
-  it("returns immediately in non-full modes without constructing a manager or binding hooks/tools", async () => {
-    for (const mode of ["cli-metadata", "setup-only", "setup-runtime"] as const) {
-      const api = apiWithConfig();
-      (api as unknown as { registrationMode: string }).registrationMode = mode;
+  describe("when register() is called in a metadata-only mode (cli-metadata, setup-only, setup-runtime — modes where OpenClaw exposes no capability handlers on the api)", () => {
+    it("returns immediately as a no-op (no tools, hooks, capability, or server service bound, no manager constructed)", async () => {
+      for (const mode of ["cli-metadata", "setup-only", "setup-runtime"] as const) {
+        const api = apiWithConfig();
+        (api as unknown as { registrationMode: string }).registrationMode = mode;
 
-      manifest.register(api);
-      await Promise.resolve();
+        manifest.register(api);
+        await Promise.resolve();
 
-      expect(gralkorTsMocks.createServerManager, `mode=${mode}`).not.toHaveBeenCalled();
-      expect(api.registered, `mode=${mode}`).toHaveLength(0);
-      expect(api.handlers.size, `mode=${mode}`).toBe(0);
-      expect(api.toolFactories, `mode=${mode}`).toHaveLength(0);
-    }
-
-    const full = apiWithConfig();
-    (full as unknown as { registrationMode: string }).registrationMode = "full";
-    manifest.register(full);
-    await Promise.resolve();
-    expect(gralkorTsMocks.createServerManager).toHaveBeenCalledTimes(1);
-    expect(full.registered).toHaveLength(1);
+        expect(gralkorTsMocks.createServerManager, `mode=${mode}`).not.toHaveBeenCalled();
+        expect(api.registered, `mode=${mode}`).toHaveLength(0);
+        expect(api.handlers.size, `mode=${mode}`).toBe(0);
+        expect(api.toolFactories, `mode=${mode}`).toHaveLength(0);
+        expect(api.capabilities, `mode=${mode}`).toHaveLength(0);
+      }
+    });
   });
 
-  it("a failed call (missing dataDir) leaves the manager slot empty so a later valid call still constructs a manager", async () => {
+  describe("when register() is called in a tool-discovery or discovery mode (OpenClaw's capability-resolution pass that builds the agent's tool-dispatch map — a separate api instance from the full activation pass)", () => {
+    it("registers one tool factory exposing four tool definitions: memory_search, memory_add, memory_build_indices, memory_build_communities (so the model's memory_search / memory_add calls resolve to an executor instead of 'tool not found')", () => {
+      for (const mode of ["tool-discovery", "discovery"] as const) {
+        const api = apiWithConfig();
+        (api as unknown as { registrationMode: string }).registrationMode = mode;
+
+        manifest.register(api);
+
+        expect(api.toolFactories, `mode=${mode}`).toHaveLength(1);
+        const tools = api.toolFactories[0]!({ sessionKey: "sess" }) as Array<{ name: string }>;
+        expect(tools.map((t) => t.name), `mode=${mode}`).toEqual([
+          "memory_search",
+          "memory_add",
+          "memory_build_indices",
+          "memory_build_communities",
+        ]);
+      }
+    });
+
+    it("registers the three hooks (before_prompt_build, agent_end, session_end) on this api instance", () => {
+      for (const mode of ["tool-discovery", "discovery"] as const) {
+        const api = apiWithConfig();
+        (api as unknown as { registrationMode: string }).registrationMode = mode;
+
+        manifest.register(api);
+
+        expect([...api.handlers.keys()].sort(), `mode=${mode}`).toEqual([
+          "agent_end",
+          "before_prompt_build",
+          "session_end",
+        ]);
+      }
+    });
+
+    it("registers the memory capability (when api.registerMemoryCapability is available) so the pass reports Shape: memory capability", () => {
+      for (const mode of ["tool-discovery", "discovery"] as const) {
+        const api = apiWithConfig();
+        (api as unknown as { registrationMode: string }).registrationMode = mode;
+
+        manifest.register(api);
+
+        expect(api.capabilities, `mode=${mode}`).toHaveLength(1);
+      }
+    });
+
+    it("does not construct a server manager and does not call api.registerService — the uvicorn singleton belongs to the full activation pass, not a discovery pass", () => {
+      for (const mode of ["tool-discovery", "discovery"] as const) {
+        const api = apiWithConfig();
+        (api as unknown as { registrationMode: string }).registrationMode = mode;
+
+        manifest.register(api);
+
+        expect(gralkorTsMocks.createServerManager, `mode=${mode}`).not.toHaveBeenCalled();
+        expect(api.registered, `mode=${mode}`).toHaveLength(0);
+      }
+    });
+
+    describe("when dataDir is unset", () => {
+      it("registration still succeeds — dataDir configures the server, which a discovery pass never starts", () => {
+        for (const mode of ["tool-discovery", "discovery"] as const) {
+          const api = makeApi();
+          (api as unknown as { pluginConfig: unknown }).pluginConfig = { agentName: "TestAgent" };
+          (api as unknown as { registrationMode: string }).registrationMode = mode;
+
+          expect(() => manifest.register(api), `mode=${mode}`).not.toThrow();
+          expect(api.toolFactories, `mode=${mode}`).toHaveLength(1);
+          expect(api.handlers.size, `mode=${mode}`).toBe(3);
+          expect(gralkorTsMocks.createServerManager, `mode=${mode}`).not.toHaveBeenCalled();
+          expect(api.registered, `mode=${mode}`).toHaveLength(0);
+        }
+      });
+    });
+  });
+
+  describe("when register() is called with api.registrationMode === 'full' (or absent, for hosts that predate the field)", () => {
+    it("a failed call (missing dataDir) leaves the manager slot empty so a later valid call still constructs a manager", async () => {
     const broken = makeApi();
     (broken as unknown as { pluginConfig: unknown }).pluginConfig = {
       agentName: "TestAgent",
@@ -362,6 +433,7 @@ describe("register() lifecycle (plugin-lifecycle tree)", () => {
 
     expect(gralkorTsMocks.createServerManager).toHaveBeenCalledTimes(1);
     expect(recovered.registered).toHaveLength(1);
+    });
   });
 });
 
