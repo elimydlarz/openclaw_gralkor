@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach } from "vitest";
 import type { GralkorClient } from "../src/gralkor/index.js";
 import { GralkorInMemoryClient } from "../src/gralkor/testing.js";
 import { registerHooks, registerTools } from "../src/register.js";
-import { resetSessionMap, setSessionGroup } from "../src/session-map.js";
 import { makeApi, makeConfig, type TestApi } from "./helpers.js";
 
 describe("registration-contract — hooks invoke requireSessionKey at their boundary", () => {
@@ -10,7 +9,6 @@ describe("registration-contract — hooks invoke requireSessionKey at their boun
   let api: TestApi;
 
   beforeEach(() => {
-    resetSessionMap();
     client = new GralkorInMemoryClient();
     api = makeApi();
     registerHooks(api, client, makeConfig());
@@ -38,7 +36,6 @@ describe("registration-contract — tools invoke requireSessionKey at their boun
   let api: TestApi;
 
   beforeEach(() => {
-    resetSessionMap();
     client = new GralkorInMemoryClient();
     api = makeApi();
     registerTools(api, client, makeConfig());
@@ -90,15 +87,13 @@ describe("registration-contract — tools invoke requireSessionKey at their boun
   });
 });
 
-describe("registration-contract — model-supplied params reach the client", () => {
+describe("registration-contract — the tool factory derives groupId from its own ctx (no prior before_prompt_build)", () => {
   let client: GralkorInMemoryClient;
   let api: TestApi;
 
   beforeEach(() => {
-    resetSessionMap();
     client = new GralkorInMemoryClient();
     api = makeApi();
-    setSessionGroup("sess-1", "user-1");
     registerTools(api, client, makeConfig());
   });
 
@@ -108,7 +103,7 @@ describe("registration-contract — model-supplied params reach the client", () 
   ) => Promise<unknown>;
   type RegisteredTool = { name: string; execute: ToolExecute };
 
-  it("memory_search forwards args.query (second positional arg) to GralkorClient.recall", async () => {
+  it("memory_search forwards args.query (second positional arg) to recall with the sanitizeGroupId(agentId)-derived groupId", async () => {
     client.setResponse("recall", { ok: "Facts:\n- tea" });
     const factory = api.toolFactories[0];
     const tools = factory({ sessionKey: "sess-1", agentId: "user-1" }) as RegisteredTool[];
@@ -119,7 +114,7 @@ describe("registration-contract — model-supplied params reach the client", () 
     expect(client.recalls).toEqual([["user_1", "sess-1", "preferences", "TestAgent", 20]]);
   });
 
-  it("memory_add forwards args.content + args.source_description to GralkorClient.memoryAdd", async () => {
+  it("memory_add forwards args.content + args.source_description to memoryAdd with the sanitizeGroupId(agentId)-derived groupId", async () => {
     client.setResponse("memoryAdd", { ok: true });
     const factory = api.toolFactories[0];
     const tools = factory({ sessionKey: "sess-1", agentId: "user-1" }) as RegisteredTool[];

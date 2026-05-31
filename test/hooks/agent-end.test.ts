@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { GralkorInMemoryClient } from "../../src/gralkor/testing.js";
 import { runAgentEnd } from "../../src/hooks/agent-end.js";
-import { setSessionGroup, resetSessionMap } from "../../src/session-map.js";
 import type { MessageEntry } from "../../src/ctx-to-messages.js";
 
 describe("agent_end hook", () => {
@@ -14,15 +13,14 @@ describe("agent_end hook", () => {
 
   beforeEach(() => {
     client = new GralkorInMemoryClient();
-    resetSessionMap();
   });
 
   it("calls GralkorClient.capture with a canonical Message[] when ctx is valid", async () => {
-    setSessionGroup("sess-1", "user-1");
     client.setResponse("capture", { ok: true });
 
     const result = await runAgentEnd(client, {
       sessionKey: "sess-1",
+      groupId: "user_1",
       agentName: "TestAgent",
       messages: okMessages,
     });
@@ -40,11 +38,11 @@ describe("agent_end hook", () => {
   });
 
   it("renders intermediate ctx entries as behaviour messages between the user and assistant", async () => {
-    setSessionGroup("sess-1", "user-1");
     client.setResponse("capture", { ok: true });
 
     await runAgentEnd(client, {
       sessionKey: "sess-1",
+      groupId: "user_1",
       agentName: "TestAgent",
       messages: [
         { role: "user", content: "what's the weather?" },
@@ -66,10 +64,9 @@ describe("agent_end hook", () => {
   });
 
   it("skips capture when messages are empty", async () => {
-    setSessionGroup("sess-1", "user-1");
-
     const result = await runAgentEnd(client, {
       sessionKey: "sess-1",
+      groupId: "user_1",
       agentName: "TestAgent",
       messages: [],
     });
@@ -79,10 +76,9 @@ describe("agent_end hook", () => {
   });
 
   it("skips capture when ctxToMessages yields null (no user or no assistant)", async () => {
-    setSessionGroup("sess-1", "user-1");
-
     const result = await runAgentEnd(client, {
       sessionKey: "sess-1",
+      groupId: "user_1",
       agentName: "TestAgent",
       messages: [{ role: "user", content: "unanswered" }],
     });
@@ -92,11 +88,11 @@ describe("agent_end hook", () => {
   });
 
   it("surfaces client errors on capture failure", async () => {
-    setSessionGroup("sess-1", "user-1");
     client.setResponse("capture", { error: "gralkor_down" });
 
     const result = await runAgentEnd(client, {
       sessionKey: "sess-1",
+      groupId: "user_1",
       agentName: "TestAgent",
       messages: okMessages,
     });
@@ -104,24 +100,10 @@ describe("agent_end hook", () => {
     expect(result).toEqual({ error: "gralkor_down" });
   });
 
-  it("returns session_not_registered when groupId is missing (safety net — before_prompt_build should have registered)", async () => {
-    client.setResponse("capture", { ok: true });
-
-    const result = await runAgentEnd(client, {
-      sessionKey: "unregistered",
-      agentName: "TestAgent",
-      messages: okMessages,
-    });
-
-    expect(result).toEqual({ error: "session_not_registered" });
-    expect(client.captures).toEqual([]);
-  });
-
   it("skips capture for OpenClaw's transient slug-generator run (sessionKey = 'temp:slug-generator')", async () => {
-    setSessionGroup("temp:slug-generator", "any-agent");
-
     const result = await runAgentEnd(client, {
       sessionKey: "temp:slug-generator",
+      groupId: "any_agent",
       agentName: "TestAgent",
       messages: [
         {
@@ -138,10 +120,9 @@ describe("agent_end hook", () => {
   });
 
   it("skips capture when the trailing user message is the OpenClaw session-reset meta-prompt", async () => {
-    setSessionGroup("sess-1", "user-1");
-
     const result = await runAgentEnd(client, {
       sessionKey: "sess-1",
+      groupId: "user_1",
       agentName: "TestAgent",
       messages: [
         {

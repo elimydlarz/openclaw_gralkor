@@ -1,5 +1,4 @@
 import type { GralkorClient, Result } from "../gralkor/index.js";
-import { getSessionGroup } from "../session-map.js";
 
 export interface SessionEndCtx {
   sessionKey: string;
@@ -13,14 +12,13 @@ export interface SessionEndCtx {
  * and returns 204, so this call is effectively fire-and-forget from a
  * latency standpoint.
  *
- * If the sessionKey was never seen by `before_prompt_build` (e.g.
- * session_end fires on a fresh process with no prior activity), there
- * is nothing to flush — skip the HTTP call and return ok.
+ * The server is the authority on whether there is anything to flush — a
+ * session_end for a session it never buffered is a 204 no-op there — so
+ * this hook always forwards rather than guessing at server-side state.
  */
 export async function runSessionEnd(
   client: GralkorClient,
   ctx: SessionEndCtx,
 ): Promise<Result<true>> {
-  if (getSessionGroup(ctx.sessionKey) === null) return { ok: true };
   return client.endSession(ctx.sessionKey);
 }

@@ -1,32 +1,12 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { GralkorInMemoryClient } from "../../src/gralkor/testing.js";
 import { runBeforePromptBuild } from "../../src/hooks/before-prompt-build.js";
-import {
-  getSessionGroup,
-  resetSessionMap,
-} from "../../src/session-map.js";
 
 describe("before_prompt_build hook", () => {
   let client: GralkorInMemoryClient;
 
   beforeEach(() => {
     client = new GralkorInMemoryClient();
-    resetSessionMap();
-  });
-
-  describe("session registration", () => {
-    it("registers the session's groupId (sanitised agentId)", async () => {
-      client.setResponse("recall", { ok: "<gralkor-memory>x</gralkor-memory>" });
-
-      await runBeforePromptBuild(client, {
-        sessionKey: "sess-1",
-        agentId: "user-with-hyphens",
-        agentName: "TestAgent",
-        prompt: "anything",
-      });
-
-      expect(getSessionGroup("sess-1")).toBe("user_with_hyphens");
-    });
   });
 
   describe("when ctx.prompt is non-empty", () => {
@@ -92,7 +72,7 @@ describe("before_prompt_build hook", () => {
   });
 
   describe("when ctx.prompt is empty or whitespace", () => {
-    it("still registers the session but skips recall when prompt is empty", async () => {
+    it("skips recall when prompt is empty", async () => {
       const result = await runBeforePromptBuild(client, {
         sessionKey: "sess-1",
         agentId: "user-1",
@@ -102,7 +82,6 @@ describe("before_prompt_build hook", () => {
 
       expect(result).toEqual({ ok: {} });
       expect(client.recalls).toEqual([]);
-      expect(getSessionGroup("sess-1")).toBe("user_1");
     });
 
     it("skips recall when prompt is whitespace-only", async () => {

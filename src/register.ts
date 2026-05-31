@@ -17,7 +17,7 @@ import { runBeforePromptBuild } from "./hooks/before-prompt-build.js";
 import { runAgentEnd } from "./hooks/agent-end.js";
 import { runSessionEnd } from "./hooks/session-end.js";
 import { runNativeIndexer } from "./native-indexer.js";
-import { requireSessionKey } from "./session-map.js";
+import { requireSessionKey } from "./session-key.js";
 
 export interface RegisterContext {
   api: MemoryPluginApi;
@@ -32,6 +32,9 @@ export function registerTools(
 ): void {
   api.registerTool((ctx) => {
     const rawSessionKey = ctx?.sessionKey;
+    const rawAgentId = ctx?.agentId;
+    const groupIdForCtx = () =>
+      sanitizeGroupId(rawAgentId ?? requireSessionKey(rawSessionKey));
     return [
       {
         name: "memory_search",
@@ -47,6 +50,7 @@ export function registerTools(
         execute: async (_toolCallId: string, args: { query: string }) => {
           const r = await runMemorySearch(client, {
             query: args.query,
+            groupId: groupIdForCtx(),
             sessionKey: requireSessionKey(rawSessionKey),
             agentName: config.agentName,
             maxResults: config.search.maxResults,
@@ -71,8 +75,9 @@ export function registerTools(
           _toolCallId: string,
           args: { content: string; source_description?: string },
         ) => {
+          requireSessionKey(rawSessionKey);
           const r = await runMemoryAdd(client, {
-            sessionKey: requireSessionKey(rawSessionKey),
+            groupId: groupIdForCtx(),
             content: args.content,
             sourceDescription: args.source_description,
           });
@@ -97,8 +102,9 @@ export function registerTools(
           "ADMIN — DO NOT CALL unless the user has explicitly asked you to build Gralkor communities. This is an expensive operator-maintenance action; calling it unprompted wastes time. Runs Graphiti community detection over this agent's memory partition.",
         parameters: { type: "object", properties: {} },
         execute: async () => {
+          requireSessionKey(rawSessionKey);
           const r = await runMemoryBuildCommunities(client, {
-            sessionKey: requireSessionKey(rawSessionKey),
+            groupId: groupIdForCtx(),
           });
           if ("error" in r) throw new Error(JSON.stringify(r.error));
           return `Built ${r.ok.communities} communities across ${r.ok.edges} edges.`;
@@ -158,8 +164,10 @@ export function registerHooks(
       ctx: HookCtx,
     ) => {
       const sessionKey = requireSessionKey(ctx.sessionKey);
+      const groupId = sanitizeGroupId(ctx.agentId ?? sessionKey);
       const result = await runAgentEnd(client, {
         sessionKey,
+        groupId,
         agentName: config.agentName,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         messages: (event.messages ?? []) as any,

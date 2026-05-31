@@ -113,9 +113,12 @@ the factory closure, not read from `args`. The factory `ctx` is
   `requireSessionKey(ctx.sessionKey)` at the top. `agentId`,
   `workspaceDir` also come from `ctx`. `messages` comes from `event`.
 - `src/register.ts` → `registerTools` — single-arg factory; captures
-  `ctx.sessionKey` into the factory closure and each tool's `execute`
-  calls `requireSessionKey(rawSessionKey)` before any client call.
-- `src/session-map.ts` → `requireSessionKey` — single chokepoint for
+  both `ctx.sessionKey` and `ctx.agentId` into the factory closure. Each
+  tool's `execute` calls `requireSessionKey(rawSessionKey)` before any
+  client call and derives its `group_id` from `ctx.agentId`
+  (`sanitizeGroupId(agentId ?? sessionKey)`) — no shared session→group
+  map, so a tool never depends on `before_prompt_build` having run.
+- `src/session-key.ts` → `requireSessionKey` — single chokepoint for
   the blank/undefined check; fails loudly rather than falling back to
   a `"default"` bucket.
 
@@ -143,8 +146,9 @@ boundary check is defeated.
 3. Confirm `PluginHookAgentContext` still has `sessionKey`, `agentId`,
    `workspaceDir`. If any renamed, update `src/register.ts` and the
    `HookCtx` type there.
-4. Confirm `OpenClawPluginToolContext` still has `sessionKey`. If
-   renamed, update the `registerTools` factory.
+4. Confirm `OpenClawPluginToolContext` still has `sessionKey` and
+   `agentId` (verified present in 2026.5.7 — the tools derive `group_id`
+   from `agentId`). If either renamed, update the `registerTools` factory.
 5. Run `pnpm test` — the registration-contract suite is the canary
    for this whole file.
 6. Update **Last verified OpenClaw version** above and commit.

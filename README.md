@@ -56,7 +56,7 @@ Three hooks + four tools, all fed by the embedded Gralkor HTTP server:
 - `session_id` is OpenClaw's `sessionKey` — required at every boundary. Hooks and tools throw synchronously if `ctx.sessionKey` is missing or blank; there is no `"default"` bucket. (OpenClaw's argument shape for hooks and tool factories is documented in `OPENCLAW_INTEGRATION_2026-04-02.md`.)
 - `group_id` is the sanitised `agentId` (hyphens replaced with underscores — a RediSearch constraint). Per-agent graph partition; agents never see each other's memory.
 
-`before_prompt_build` is the single writer of the `sessionKey → groupId` map. Tools and later hooks look up that map — if `session_not_registered` errors appear, it means the tool fired before `before_prompt_build`, which shouldn't happen under normal OpenClaw flow.
+Every hook and tool derives `group_id` independently from its own `ctx.agentId` (`sanitizeGroupId(agentId ?? sessionKey)`) at the register boundary — there is no shared session→group map. Recall, capture, search, and add therefore target the same per-agent partition regardless of invocation order or which Node process handles the turn, so a tool call never depends on `before_prompt_build` having run first.
 
 ## Configuration
 

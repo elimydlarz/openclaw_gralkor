@@ -22,16 +22,15 @@ canonical-message
 ```
 before_prompt_build hook (src: src/hooks/before-prompt-build.ts; unit: test/hooks/before-prompt-build.test.ts)
   when the hook fires with a sessionKey
-    then the session's groupId is registered in the session map (sanitised from agentId)
     then the native indexer is fired fire-and-forget (scans workspace/MEMORY.md + workspace/memory/*.md)
   when event.prompt is non-empty (this is the current turn's user input; OpenClaw's SDK splits prompt from conversation history)
-    then GralkorClient.recall is called with (groupId, sessionId, event.prompt.trim(), pluginConfig.agentName)
+    then GralkorClient.recall is called with (groupId = sanitizeGroupId(agentId), sessionId, event.prompt.trim(), pluginConfig.agentName)
     when recall returns { ok: block }
       then block is injected into the prompt as prependContext
     if recall returns { error: _ }
       then the hook logs a warning via console.warn naming the error and returns { ok: {} } — the turn continues without memory context under the retry-ownership doctrine
   when event.prompt is empty or whitespace-only
-    then recall is not called (session-map registration still happens above)
+    then recall is not called
 ```
 
 ```
@@ -39,7 +38,7 @@ agent_end hook (src: src/hooks/agent-end.ts; unit: test/hooks/agent-end.test.ts)
   when messages are present
     then ctx is converted via ctxToMessages to a canonical [%{role, content}] sequence
       ordered user → behaviour(s) → assistant
-    then GralkorClient.capture(sessionId, groupId, pluginConfig.agentName, messages) is called with that sequence
+    then GralkorClient.capture(sessionId, groupId = sanitizeGroupId(agentId), pluginConfig.agentName, messages) is called with that sequence
     when capture returns { ok: true }
       then the hook completes silently (server owns buffering + flush)
     if capture returns { error: _ }
@@ -50,20 +49,16 @@ agent_end hook (src: src/hooks/agent-end.ts; unit: test/hooks/agent-end.test.ts)
     then capture is not called (harness-internal run, not a real user turn)
   when the canonical user message starts with the OpenClaw session-reset meta-prompt ("A new session was started via /new or /reset")
     then capture is not called (synthetic greeting turn, not real user content)
-  when the hook fires with a sessionKey that isn't registered in the session map
-    then the hook returns session_not_registered (safety net — before_prompt_build should have registered it)
 ```
 
 ```
 session_end hook (src: src/hooks/session-end.ts; unit: test/hooks/session-end.test.ts)
-  when the hook fires with a registered sessionKey
-    then GralkorClient.endSession(sessionId) is called
+  when the hook fires
+    then GralkorClient.endSession(sessionId) is called (the server is the authority on whether there is anything to flush — an unbuffered session is a 204 no-op there)
     when endSession returns { ok: true }
       then the hook completes silently (server handles the flush async)
     if endSession returns { error: _ }
       then the hook lets the error surface
-  when the hook fires with an unregistered sessionKey
-    then endSession is not called (nothing to flush)
 ```
 
 ```
@@ -110,16 +105,7 @@ ctxToMessages (src: src/ctx-to-messages.ts; unit: test/ctx-to-messages.test.ts)
 ```
 
 ```
-session-map (src: src/session-map.ts; unit: test/session-map.test.ts)
-  setSessionGroup / getSessionGroup
-    when setSessionGroup(sessionKey, agentId) is called
-      then sessionKey is mapped to sanitizeGroupId(agentId) in a module-level Map
-    when setSessionGroup is called twice for the same sessionKey
-      then the second value overwrites the first
-    when getSessionGroup(sessionKey) is called and the sessionKey was previously set
-      then the sanitised groupId is returned
-    when getSessionGroup(sessionKey) is called and the sessionKey was never set
-      then null is returned (caller surfaces session_not_registered)
+require-session-key (src: src/session-key.ts; unit: test/session-key.test.ts)
   requireSessionKey
     when requireSessionKey is called with a non-blank string
       then it returns the string unchanged
@@ -133,28 +119,28 @@ session-map (src: src/session-map.ts; unit: test/session-map.test.ts)
 
 ```
 memory_search tool (src: src/tools/memory-search.ts; unit: test/tools/memory-search.test.ts)
-  when the tool is invoked with a query and a registered sessionKey
-    then GralkorClient.recall(groupId, sessionId, query, search.maxResults) is called
+  (the groupId is derived from the tool ctx's agentId at the register boundary — see registration-contract)
+  when runMemorySearch is called with a groupId, sessionKey, and query
+    then GralkorClient.recall(groupId, sessionId, query, agentName, maxResults) is called
+    when maxResults is configured
+      then it is forwarded to the client
     when the client returns { ok: block }
       then the tool result is block
     if the client returns { error: _ }
       then the tool surfaces the error
-  when the sessionKey is present but not registered in the session map
-    then the tool returns "session_not_registered"
 ```
 
 ```
 memory_add tool (src: src/tools/memory-add.ts; unit: test/tools/memory-add.test.ts)
-  when the tool is invoked with content and a registered sessionKey
+  (the groupId is derived from the tool ctx's agentId at the register boundary — see registration-contract)
+  when runMemoryAdd is called with a groupId and content
     then GralkorClient.memoryAdd(groupId, content, sourceDescription) is called
     when the client returns { ok: true }
-      then the tool returns a success message (server queues for async ingest)
+      then the tool returns { ok: true } (server queues for async ingest)
     if the client returns { error: _ }
       then the tool surfaces the error
   when sourceDescription is omitted
     then null is passed to the client (server defaults to "manual")
-  when the sessionKey is present but not registered in the session map
-    then the tool returns "session_not_registered"
 ```
 
 ```
@@ -169,14 +155,13 @@ memory_build_indices tool (src: src/tools/memory-build-indices.ts; unit: test/to
 
 ```
 memory_build_communities tool (src: src/tools/memory-build-communities.ts; unit: test/tools/memory-build-communities.test.ts)
-  when the tool is invoked with a registered sessionKey
-    then GralkorClient.buildCommunities is called with the groupId for the current session
+  (the groupId is derived from the tool ctx's agentId at the register boundary — see registration-contract)
+  when runMemoryBuildCommunities is called with a groupId
+    then GralkorClient.buildCommunities(groupId) is called
     when the client returns { ok: { communities, edges } }
       then the tool result reports the community and edge counts
     if the client returns { error: _ }
       then the tool surfaces the error
-  when the sessionKey is present but not registered in the session map
-    then the tool returns "session_not_registered"
 ```
 
 ```
@@ -204,7 +189,7 @@ native-indexer (src: src/native-indexer.ts; unit: test/native-indexer.test.ts)
 registration-contract (src: src/register.ts; unit: test/registration-contract.test.ts)
   each hook and tool invokes requireSessionKey(ctx.sessionKey) at its boundary before any work
     when before_prompt_build fires with a ctx that has no sessionKey (undefined or blank)
-      then the hook throws synchronously before recall, native-index, or session registration
+      then the hook throws synchronously before recall or native-index
     when agent_end fires with a ctx that has no sessionKey
       then the hook throws synchronously before capture
     when session_end fires with a ctx that has no sessionKey
@@ -218,11 +203,11 @@ registration-contract (src: src/register.ts; unit: test/registration-contract.te
   memory_build_indices is the one exception — it is a whole-graph admin operation
     when memory_build_indices.execute runs with a tool-registration ctx that has no sessionKey
       then execute proceeds without requireSessionKey (no per-session scope)
-  model-supplied params reach the client through the real dispatch signature
-    when memory_search.execute is invoked with a registered sessionKey and {query} as params
-      then GralkorClient.recall is called with that exact query and the configured search.maxResults cap
-    when memory_add.execute is invoked with a registered sessionKey and {content, source_description} as params
-      then GralkorClient.memoryAdd is called with that exact content and source description
+  the tool factory derives groupId from its own ctx — no prior before_prompt_build required
+    when memory_search.execute is invoked via the real tool factory with a ctx carrying agentId + sessionKey and {query} as params, and no before_prompt_build has run
+      then GralkorClient.recall is called with the sanitizeGroupId(agentId)-derived groupId, that exact query, and the configured search.maxResults cap (no "session_not_registered")
+    when memory_add.execute is invoked via the real tool factory with a ctx carrying agentId + sessionKey and {content, source_description} as params, and no before_prompt_build has run
+      then GralkorClient.memoryAdd is called with the sanitizeGroupId(agentId)-derived groupId, that exact content, and source description (no "session_not_registered")
     when memory_add.execute is invoked without source_description
       then GralkorClient.memoryAdd is called with sourceDescription = null
 ```

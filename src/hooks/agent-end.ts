@@ -1,9 +1,9 @@
 import type { GralkorClient, Result } from "../gralkor/index.js";
 import { ctxToMessages, type MessageEntry } from "../ctx-to-messages.js";
-import { getSessionGroup } from "../session-map.js";
 
 export interface AgentEndCtx {
   sessionKey: string;
+  groupId: string;
   agentName: string;
   messages: MessageEntry[];
 }
@@ -57,8 +57,5 @@ export async function runAgentEnd(
     return { ok: true };
   }
 
-  const groupId = getSessionGroup(ctx.sessionKey);
-  if (groupId === null) return { error: "session_not_registered" };
-
-  return client.capture(ctx.sessionKey, groupId, ctx.agentName, messages);
+  return client.capture(ctx.sessionKey, ctx.groupId, ctx.agentName, messages);
 }

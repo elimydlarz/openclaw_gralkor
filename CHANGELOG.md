@@ -1,5 +1,10 @@
 # Changelog
 
+## [4.0.4] - 2026-05-31
+
+### Fixed
+- `memory_search` / `memory_add` / `memory_build_communities` no longer fail with `session_not_registered`. The tools resolved their `group_id` through a module-level `sessionKey → groupId` map that only the `before_prompt_build` hook ever wrote, so a tool call landing in a Node process where that hook hadn't run (a fresh gateway after a restart, or a turn dispatched without a prompt-build pass) read an empty map and failed — even though auto-recall, which derives its group inline from `ctx.agentId`, kept working. Every hook and tool now derives `group_id` directly from its own `ctx.agentId` (`sanitizeGroupId(agentId ?? sessionKey)`, the same derivation recall already used), so a tool call never depends on prior-hook state or which process handles the turn. The session→group map is removed (`src/session-map.ts` → `src/session-key.ts`, keeping only `requireSessionKey`); `session_end` now always forwards to the server, which is the authority on whether a session has anything to flush.
+
 ## [4.0.3] - 2026-05-31
 
 ### Fixed

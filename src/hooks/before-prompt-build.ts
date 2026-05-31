@@ -1,5 +1,4 @@
 import { sanitizeGroupId, type GralkorClient, type Result } from "../gralkor/index.js";
-import { setSessionGroup } from "../session-map.js";
 
 export interface BeforePromptBuildCtx {
   sessionKey: string;
@@ -16,8 +15,6 @@ export async function runBeforePromptBuild(
   client: GralkorClient,
   ctx: BeforePromptBuildCtx,
 ): Promise<Result<BeforePromptBuildOutput>> {
-  setSessionGroup(ctx.sessionKey, ctx.agentId);
-
   const query = ctx.prompt.trim();
   if (query === "") return { ok: {} };
 
